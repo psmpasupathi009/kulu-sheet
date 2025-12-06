@@ -104,12 +104,6 @@ export default function GroupsPage() {
             Manage rotating savings and credit association groups
           </p>
         </div>
-        <Button asChild className="w-full sm:w-auto">
-          <Link href="/dashbaord/groups/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Group
-          </Link>
-        </Button>
       </div>
 
       <Card>

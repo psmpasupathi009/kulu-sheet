@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 
 const createCycleSchema = z.object({
-  groupId: z.string().min(1, "Group is required"), // Group providing the loan
+  groupId: z.string().optional(), // Optional - can work without groups
   memberId: z.string().min(1, "Member is required"), // Member receiving the loan
   loanAmount: z.number().positive("Loan amount must be positive"),
   loanMonths: z
@@ -13,6 +13,7 @@ const createCycleSchema = z.object({
     .int()
     .positive("Loan duration must be positive")
     .default(10),
+  monthlyAmount: z.number().positive().optional(), // Monthly contribution amount
   reason: z.string().optional(), // Reason for the loan
   disbursedAt: z.string().optional(), // Optional disbursal date
   guarantor1Id: z.string().optional(),
@@ -77,60 +78,74 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = createCycleSchema.parse(body);
 
-    // Verify group exists
-    const group = await prisma.group.findUnique({
-      where: { id: data.groupId },
-      include: {
-        members: {
-          where: { isActive: true },
-        },
-      },
+    // Verify member exists
+    const member = await prisma.member.findUnique({
+      where: { id: data.memberId },
     });
 
-    if (!group) {
-      return NextResponse.json({ error: "Group not found" }, { status: 404 });
+    if (!member) {
+      return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
-    // Verify member exists and is in the group
-    const groupMember = await prisma.groupMember.findUnique({
-      where: {
-        groupId_memberId: {
-          groupId: data.groupId,
-          memberId: data.memberId,
+    // If groupId is provided, verify group and member membership
+    let group = null;
+    let groupMember = null;
+    if (data.groupId) {
+      group = await prisma.group.findUnique({
+        where: { id: data.groupId },
+        include: {
+          members: {
+            where: { isActive: true },
+          },
         },
-      },
-    });
+      });
 
-    if (!groupMember || !groupMember.isActive) {
-      return NextResponse.json(
-        { error: "Member not found in group or is inactive" },
-        { status: 404 }
-      );
+      if (!group) {
+        return NextResponse.json({ error: "Group not found" }, { status: 404 });
+      }
+
+      groupMember = await prisma.groupMember.findUnique({
+        where: {
+          groupId_memberId: {
+            groupId: data.groupId,
+            memberId: data.memberId,
+          },
+        },
+      });
+
+      if (!groupMember || !groupMember.isActive) {
+        return NextResponse.json(
+          { error: "Member not found in group or is inactive" },
+          { status: 404 }
+        );
+      }
     }
 
-    // Get the next cycle number for this group
+    // Get the next cycle number
     const lastCycle = await prisma.loanCycle.findFirst({
-      where: { groupId: data.groupId },
+      where: data.groupId ? { groupId: data.groupId } : {},
       orderBy: { cycleNumber: "desc" },
     });
 
     const cycleNumber = lastCycle ? lastCycle.cycleNumber + 1 : 1;
 
-    // Check if cycle with this number already exists
-    const existingCycle = await prisma.loanCycle.findUnique({
-      where: {
-        groupId_cycleNumber: {
-          groupId: data.groupId,
-          cycleNumber: cycleNumber,
+    // Check if cycle with this number already exists (only if groupId provided)
+    if (data.groupId) {
+      const existingCycle = await prisma.loanCycle.findUnique({
+        where: {
+          groupId_cycleNumber: {
+            groupId: data.groupId,
+            cycleNumber: cycleNumber,
+          },
         },
-      },
-    });
+      });
 
-    if (existingCycle) {
-      return NextResponse.json(
-        { error: "Cycle number already exists for this group" },
-        { status: 400 }
-      );
+      if (existingCycle) {
+        return NextResponse.json(
+          { error: "Cycle number already exists for this group" },
+          { status: 400 }
+        );
+      }
     }
 
     // Calculate start date (disbursal date or now)
@@ -145,9 +160,9 @@ export async function POST(request: NextRequest) {
       const cycle = await tx.loanCycle.create({
         data: {
           cycleNumber: cycleNumber,
-          groupId: data.groupId,
+          groupId: data.groupId || null,
           startDate: startDate,
-          monthlyAmount: group.monthlyAmount || 2000,
+          monthlyAmount: data.monthlyAmount || group?.monthlyAmount || 2000,
           isActive: true,
           groupFund: {
             create: {
@@ -177,15 +192,17 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Update group member's total received
-      await tx.groupMember.update({
-        where: { id: groupMember.id },
-        data: {
-          totalReceived: {
-            increment: data.loanAmount,
+      // Update group member's total received (if group exists)
+      if (groupMember) {
+        await tx.groupMember.update({
+          where: { id: groupMember.id },
+          data: {
+            totalReceived: {
+              increment: data.loanAmount,
+            },
           },
-        },
-      });
+        });
+      }
 
       // Deduct loan amount from group fund's investment pool
       // The loan comes from the group's pooled funds (member contributions)

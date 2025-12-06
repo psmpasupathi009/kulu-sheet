@@ -101,10 +101,21 @@ export default function CyclesPage() {
     monthlyAmount: 0,
   });
   const [success, setSuccess] = useState("");
+  const [showAddMember, setShowAddMember] = useState<string | null>(null);
+  const [addMemberForm, setAddMemberForm] = useState({
+    memberId: "",
+    monthlyAmount: "",
+    joiningDate: new Date().toISOString().split("T")[0],
+  });
+  const [allMembers, setAllMembers] = useState<
+    Array<{ id: string; name: string; userId: string }>
+  >([]);
+  const [addingMember, setAddingMember] = useState(false);
 
   useEffect(() => {
     fetchCycles();
     fetchMembers();
+    fetchAllMembers();
   }, []);
 
   const fetchMembers = async () => {
@@ -116,6 +127,62 @@ export default function CyclesPage() {
       }
     } catch (error) {
       console.error("Error fetching members:", error);
+    }
+  };
+
+  const fetchAllMembers = async () => {
+    try {
+      const response = await fetch("/api/members");
+      if (response.ok) {
+        const data = await response.json();
+        setAllMembers(data.members);
+      }
+    } catch (error) {
+      console.error("Error fetching all members:", error);
+    }
+  };
+
+  const handleAddMemberToCycle = async (cycleId: string) => {
+    if (!addMemberForm.memberId || !addMemberForm.monthlyAmount) {
+      setError("Please fill all required fields");
+      return;
+    }
+
+    setAddingMember(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/cycles/${cycleId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: addMemberForm.memberId,
+          monthlyAmount: parseFloat(addMemberForm.monthlyAmount),
+          joiningDate: new Date(addMemberForm.joiningDate).toISOString(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to add member");
+      }
+
+      setSuccess(
+        `Member added successfully! Catch-up payment: ₹${data.catchUpAmount.toFixed(2)} (${data.monthsElapsed} months)`
+      );
+      setShowAddMember(null);
+      setAddMemberForm({
+        memberId: "",
+        monthlyAmount: "",
+        joiningDate: new Date().toISOString().split("T")[0],
+      });
+      fetchCycles();
+      setTimeout(() => setSuccess(""), 5000);
+    } catch (err: any) {
+      setError(err.message || "Failed to add member to cycle");
+    } finally {
+      setAddingMember(false);
     }
   };
 
@@ -323,9 +390,27 @@ export default function CyclesPage() {
               )}
 
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-2">
-                  Loan Rotation Schedule
-                </h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-base sm:text-lg font-semibold">
+                    Loan Rotation Schedule
+                  </h3>
+                  {user?.role === "ADMIN" && cycle.isActive && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddMember(cycle.id);
+                        setAddMemberForm({
+                          memberId: "",
+                          monthlyAmount: cycle.monthlyAmount.toString(),
+                          joiningDate: new Date().toISOString().split("T")[0],
+                        });
+                      }}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Member
+                    </Button>
+                  )}
+                </div>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -544,6 +629,158 @@ export default function CyclesPage() {
                       setShowDisburseForm(false);
                       setDisbursingSequence(null);
                     }}>
+                    Cancel
+                  </Button>
+                </div>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Add Member to Cycle Dialog */}
+      {showAddMember && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Add Member to Cycle</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowAddMember(null);
+                    setAddMemberForm({
+                      memberId: "",
+                      monthlyAmount: "",
+                      joiningDate: new Date().toISOString().split("T")[0],
+                    });
+                  }}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <CardDescription>
+                Add a new member to this cycle. If joining mid-cycle, catch-up payment will be calculated automatically.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel>Member <span className="text-destructive">*</span></FieldLabel>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={addMemberForm.memberId}
+                    onChange={(e) =>
+                      setAddMemberForm({
+                        ...addMemberForm,
+                        memberId: e.target.value,
+                      })
+                    }
+                    required>
+                    <option value="">Select a member</option>
+                    {allMembers
+                      .filter(
+                        (m) =>
+                          !cycles
+                            .find((c) => c.id === showAddMember)
+                            ?.sequences.some((s) => s.member.userId === m.userId)
+                      )
+                      .map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} ({member.userId})
+                        </option>
+                      ))}
+                  </select>
+                  <FieldDescription>
+                    Select member to add to this cycle
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Monthly Amount (₹) <span className="text-destructive">*</span></FieldLabel>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={addMemberForm.monthlyAmount}
+                    onChange={(e) =>
+                      setAddMemberForm({
+                        ...addMemberForm,
+                        monthlyAmount: e.target.value,
+                      })
+                    }
+                    required
+                    placeholder="2000"
+                  />
+                  <FieldDescription>
+                    Monthly contribution amount for this member
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Joining Date <span className="text-destructive">*</span></FieldLabel>
+                  <Input
+                    type="date"
+                    value={addMemberForm.joiningDate}
+                    onChange={(e) =>
+                      setAddMemberForm({
+                        ...addMemberForm,
+                        joiningDate: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                  <FieldDescription>
+                    Date when member is joining. Catch-up payment will be calculated based on cycle start date.
+                  </FieldDescription>
+                </Field>
+                {addMemberForm.joiningDate && showAddMember && (
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-sm font-medium mb-1">Catch-up Payment:</p>
+                    {(() => {
+                      const cycle = cycles.find((c) => c.id === showAddMember);
+                      if (!cycle) return null;
+                      const joiningDate = new Date(addMemberForm.joiningDate);
+                      const startDate = new Date(cycle.startDate);
+                      const monthsElapsed = Math.max(
+                        0,
+                        Math.floor(
+                          (joiningDate.getTime() - startDate.getTime()) /
+                            (30 * 24 * 60 * 60 * 1000)
+                        )
+                      );
+                      const monthlyAmount = parseFloat(addMemberForm.monthlyAmount) || 0;
+                      const catchUpAmount = monthsElapsed * monthlyAmount;
+                      return (
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <p>Months elapsed: {monthsElapsed}</p>
+                          <p className="font-semibold text-foreground">
+                            Catch-up amount: ₹{catchUpAmount.toFixed(2)}
+                          </p>
+                          <p className="text-xs">
+                            Member needs to pay ₹{catchUpAmount.toFixed(2)} to catch up with existing members.
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    onClick={() => handleAddMemberToCycle(showAddMember)}
+                    disabled={addingMember || !addMemberForm.memberId || !addMemberForm.monthlyAmount}>
+                    {addingMember ? "Adding..." : "Add Member"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddMember(null);
+                      setAddMemberForm({
+                        memberId: "",
+                        monthlyAmount: "",
+                        joiningDate: new Date().toISOString().split("T")[0],
+                      });
+                    }}
+                    disabled={addingMember}>
                     Cancel
                   </Button>
                 </div>

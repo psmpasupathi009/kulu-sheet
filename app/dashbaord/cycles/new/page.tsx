@@ -53,6 +53,7 @@ export default function NewCyclePage() {
     memberId: "",
     loanAmount: "",
     loanMonths: "10",
+    monthlyAmount: "2000",
     reason: "",
     disbursedAt: new Date().toISOString().split("T")[0],
     guarantor1Id: "",
@@ -177,12 +178,6 @@ export default function NewCyclePage() {
     setSubmitting(true);
 
     // Validation
-    if (!formData.groupId) {
-      setError("Please select a group");
-      setSubmitting(false);
-      return;
-    }
-
     if (!formData.memberId) {
       setError("Please select a member");
       setSubmitting(false);
@@ -209,10 +204,11 @@ export default function NewCyclePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          groupId: formData.groupId,
+          groupId: formData.groupId || undefined,
           memberId: formData.memberId,
           loanAmount: parseFloat(formData.loanAmount),
           loanMonths: parseInt(formData.loanMonths),
+          monthlyAmount: parseFloat(formData.monthlyAmount),
           reason: formData.reason || undefined,
           disbursedAt: disbursedAt.toISOString(),
           guarantor1Id: formData.guarantor1Id || undefined,
@@ -303,10 +299,8 @@ export default function NewCyclePage() {
         <CardHeader>
           <CardTitle>Loan Details</CardTitle>
           <CardDescription>
-            Select the group providing the loan, member receiving it (must be a
-            member of that group), and enter loan details. The loan will be
-            disbursed immediately upon submission. Loans are group-based and
-            members receive benefits based on their joining week.
+            Create a new ROSCA cycle. Members invest monthly, and one member receives a loan each month (rotating). 
+            The first member will receive the loan immediately. Other members can be added later with catch-up payments if joining mid-cycle.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
@@ -315,8 +309,7 @@ export default function NewCyclePage() {
               <Field>
                 <FieldLabel htmlFor="groupId">
                   <Building2 className="mr-2 h-4 w-4 inline" />
-                  Group (Providing Loan){" "}
-                  <span className="text-destructive">*</span>
+                  Group (Optional)
                 </FieldLabel>
                 <select
                   id="groupId"
@@ -324,9 +317,8 @@ export default function NewCyclePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, groupId: e.target.value })
                   }
-                  required
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">Select a group</option>
+                  <option value="">No Group (Simple Cycle)</option>
                   {groups.map((group) => (
                     <option key={group.id} value={group.id}>
                       {group.name}
@@ -334,14 +326,14 @@ export default function NewCyclePage() {
                   ))}
                 </select>
                 <FieldDescription>
-                  Select the ROSCA group that will provide this loan
+                  Optional: Select a group if this cycle is part of a group. Leave empty for a simple cycle.
                 </FieldDescription>
               </Field>
 
               <Field>
                 <FieldLabel htmlFor="memberId">
                   <User className="mr-2 h-4 w-4 inline" />
-                  Member (Receiving Loan){" "}
+                  Member (Receiving First Loan){" "}
                   <span className="text-destructive">*</span>
                 </FieldLabel>
                 <select
@@ -352,33 +344,58 @@ export default function NewCyclePage() {
                   }
                   required
                   disabled={
-                    !formData.groupId ||
-                    loadingMembers ||
-                    groupMembers.length === 0
+                    !!formData.groupId &&
+                    (loadingMembers || groupMembers.length === 0)
                   }
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
                   <option value="">
-                    {!formData.groupId
-                      ? "Select a group first"
-                      : loadingMembers
-                      ? "Loading members..."
-                      : groupMembers.length === 0
-                      ? "No active members in this group. Add members to the group first."
+                    {formData.groupId
+                      ? loadingMembers
+                        ? "Loading members..."
+                        : groupMembers.length === 0
+                        ? "No active members in this group"
+                        : "Select a member from group"
                       : "Select a member"}
                   </option>
-                  {groupMembers.length > 0 &&
-                    groupMembers.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name} ({member.userId || member.id})
-                      </option>
-                    ))}
+                  {formData.groupId && groupMembers.length > 0
+                    ? groupMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} ({member.userId || member.id})
+                        </option>
+                      ))
+                    : allMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} ({member.userId || member.id})
+                        </option>
+                      ))}
                 </select>
                 <FieldDescription>
-                  {loadingMembers
-                    ? "Loading members from selected group..."
-                    : groupMembers.length === 0
-                    ? "No members in this group. Go to the group page to add members first."
-                    : `Select the member who will receive this loan. ${groupMembers.length} member(s) available.`}
+                  {formData.groupId
+                    ? `Select the member who will receive the first loan. ${groupMembers.length} member(s) available in group.`
+                    : "Select the member who will receive the first loan in this cycle. Other members can be added later."}
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="monthlyAmount">
+                  <DollarSign className="mr-2 h-4 w-4 inline" />
+                  Monthly Contribution Amount (₹){" "}
+                  <span className="text-destructive">*</span>
+                </FieldLabel>
+                <Input
+                  id="monthlyAmount"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={formData.monthlyAmount}
+                  onChange={(e) =>
+                    setFormData({ ...formData, monthlyAmount: e.target.value })
+                  }
+                  required
+                  placeholder="2000"
+                />
+                <FieldDescription>
+                  Monthly amount each member will contribute to the cycle
                 </FieldDescription>
               </Field>
 
