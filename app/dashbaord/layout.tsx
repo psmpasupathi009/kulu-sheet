@@ -12,7 +12,7 @@ export default function DashboardLayout({
     <SidebarProvider>
       <div className="flex w-full min-h-screen relative">
         {/* Background Image - Responsive for all screen sizes */}
-        <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
           <div className="absolute inset-0 w-full h-full">
             <Image
               src="/sivan.png"
@@ -21,10 +21,12 @@ export default function DashboardLayout({
               className="object-cover opacity-10"
               priority
               quality={90}
-              sizes="100vw"
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 100vw, 100vw"
               style={{
                 objectFit: 'cover',
                 objectPosition: 'center',
+                width: '100%',
+                height: '100%',
               }}
             />
           </div>

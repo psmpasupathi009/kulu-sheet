@@ -4,7 +4,7 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: "kulu-sheet - Financial Management System",
+  title: "kulu - Financial Management System",
   description: "Monthly investment and loan repayment system",
 };
 

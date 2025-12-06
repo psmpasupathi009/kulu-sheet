@@ -72,7 +72,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold">kulu-sheet Dashboard</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">kulu Dashboard</h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">
           Welcome back, {user?.name || user?.email}
           {user?.role === "ADMIN" && (

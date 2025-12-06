@@ -9,7 +9,7 @@ export function SiteBranding({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="font-bold text-lg">kulu-sheet</div>
+      <div className="font-bold text-lg">kulu</div>
       {!collapsed && (
         <span className="text-sm text-muted-foreground">Financial System</span>
       )}
