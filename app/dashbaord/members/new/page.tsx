@@ -44,6 +44,8 @@ export default function NewMemberPage() {
     address2: "",
     accountNumber: "",
     phone: "",
+    ifscCode: "",
+    upiId: "",
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -156,6 +158,8 @@ export default function NewMemberPage() {
           address2: formData.address2.trim() || undefined,
           accountNumber: formData.accountNumber.trim() || undefined,
           phone: formData.phone.trim() || undefined,
+          ifscCode: formData.ifscCode.trim().toUpperCase() || undefined,
+          upiId: formData.upiId.trim() || undefined,
         }),
       });
 
@@ -369,6 +373,45 @@ export default function NewMemberPage() {
                 />
                 <FieldDescription>
                   Bank account number (optional, must be unique)
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="ifscCode">
+                  <Building2 className="mr-2 h-4 w-4 inline" />
+                  IFSC Code
+                </FieldLabel>
+                <Input
+                  id="ifscCode"
+                  type="text"
+                  placeholder="SBIN0001234"
+                  value={formData.ifscCode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ifscCode: e.target.value.toUpperCase() })
+                  }
+                  maxLength={11}
+                />
+                <FieldDescription>
+                  IFSC code for bank transfers (11 characters, optional)
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="upiId">
+                  <CreditCard className="mr-2 h-4 w-4 inline" />
+                  UPI ID
+                </FieldLabel>
+                <Input
+                  id="upiId"
+                  type="text"
+                  placeholder="name@paytm or phone@upi"
+                  value={formData.upiId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, upiId: e.target.value })
+                  }
+                />
+                <FieldDescription>
+                  UPI ID for digital payments (e.g., name@paytm, phone@upi, optional)
                 </FieldDescription>
               </Field>
 

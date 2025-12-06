@@ -9,6 +9,7 @@ const repayLoanSchema = z.object({
   paymentDate: z.string().optional(), // Optional, defaults to now
   isLate: z.boolean().default(false),
   overdueMonths: z.number().int().min(0).default(0),
+  paymentMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -173,6 +174,7 @@ export async function POST(request: NextRequest) {
         penalty: latePenalty, // Penalty recorded separately
         remaining: payment.newBalance,
         month: newMonth,
+        paymentMethod: data.paymentMethod || null,
       },
     });
 

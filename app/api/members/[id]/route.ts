@@ -14,6 +14,8 @@ const updateMemberSchema = z.object({
   accountNumber: z.string().optional(),
   phone: z.string().optional(),
   photo: z.string().optional(),
+  ifscCode: z.string().optional(),
+  upiId: z.string().optional(),
 });
 
 export async function GET(

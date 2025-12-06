@@ -90,6 +90,7 @@ export default function CyclesPage() {
   const [disburseForm, setDisburseForm] = useState({
     guarantor1Id: "",
     guarantor2Id: "",
+    disbursementMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
   });
   const [editingCycle, setEditingCycle] = useState<string | null>(null);
   const [deletingCycle, setDeletingCycle] = useState<string | null>(null);
@@ -386,6 +387,7 @@ export default function CyclesPage() {
                                       setDisburseForm({
                                         guarantor1Id: "",
                                         guarantor2Id: "",
+                                        disbursementMethod: "",
                                       });
                                     }}>
                                     Disburse
@@ -483,6 +485,26 @@ export default function CyclesPage() {
                     Second co-signer for this loan
                   </FieldDescription>
                 </Field>
+                <Field>
+                  <FieldLabel>Disbursement Method (Optional)</FieldLabel>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={disburseForm.disbursementMethod}
+                    onChange={(e) =>
+                      setDisburseForm({
+                        ...disburseForm,
+                        disbursementMethod: e.target.value as "CASH" | "UPI" | "BANK_TRANSFER" | "",
+                      })
+                    }>
+                    <option value="">Select payment method</option>
+                    <option value="CASH">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                  </select>
+                  <FieldDescription>
+                    How the loan will be disbursed to the member
+                  </FieldDescription>
+                </Field>
                 <div className="flex gap-2">
                   <Button
                     className="flex-1"
@@ -497,6 +519,8 @@ export default function CyclesPage() {
                               disburseForm.guarantor1Id || undefined,
                             guarantor2Id:
                               disburseForm.guarantor2Id || undefined,
+                            disbursementMethod:
+                              disburseForm.disbursementMethod || undefined,
                           }),
                         });
                         if (response.ok) {

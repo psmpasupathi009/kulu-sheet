@@ -45,6 +45,8 @@ interface Member {
   accountNumber?: string;
   phone?: string;
   photo?: string;
+  ifscCode?: string;
+  upiId?: string;
 }
 
 export default function MemberDetailPage() {
@@ -62,6 +64,8 @@ export default function MemberDetailPage() {
     address2: "",
     accountNumber: "",
     phone: "",
+    ifscCode: "",
+    upiId: "",
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -88,6 +92,8 @@ export default function MemberDetailPage() {
           address2: data.member.address2 || "",
           accountNumber: data.member.accountNumber || "",
           phone: data.member.phone || "",
+          ifscCode: data.member.ifscCode || "",
+          upiId: data.member.upiId || "",
         });
       }
     } catch (error) {
@@ -129,6 +135,8 @@ export default function MemberDetailPage() {
           address2: formData.address2.trim() || undefined,
           accountNumber: formData.accountNumber.trim() || undefined,
           phone: formData.phone.trim() || undefined,
+          ifscCode: formData.ifscCode.trim().toUpperCase() || undefined,
+          upiId: formData.upiId.trim() || undefined,
         }),
       });
 
@@ -394,6 +402,57 @@ export default function MemberDetailPage() {
               ) : (
                 <p className="text-lg font-mono">
                   {member.accountNumber || "-"}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                IFSC Code
+              </label>
+              {isEditing ? (
+                <Input
+                  type="text"
+                  value={formData.ifscCode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ifscCode: e.target.value.toUpperCase() })
+                  }
+                  placeholder="SBIN0001234"
+                  maxLength={11}
+                />
+              ) : (
+                <p className="text-lg font-mono">
+                  {member.ifscCode || "-"}
+                </p>
+              )}
+              {!isEditing && member.ifscCode && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Used for bank transfers (NEFT/RTGS/IMPS)
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                UPI ID
+              </label>
+              {isEditing ? (
+                <Input
+                  type="text"
+                  value={formData.upiId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, upiId: e.target.value })
+                  }
+                  placeholder="name@paytm or phone@upi"
+                />
+              ) : (
+                <p className="text-lg font-mono">
+                  {member.upiId || "-"}
+                </p>
+              )}
+              {!isEditing && member.upiId && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Used for UPI transfers
                 </p>
               )}
             </div>

@@ -9,6 +9,7 @@ const disburseLoanSchema = z.object({
   disbursedAt: z.string().optional(),
   guarantor1Id: z.string().optional(),
   guarantor2Id: z.string().optional(),
+  disbursementMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
         disbursedAt: new Date(data.disbursedAt || new Date()),
         guarantor1Id: data.guarantor1Id || null,
         guarantor2Id: data.guarantor2Id || null,
+        disbursementMethod: data.disbursementMethod || null,
       },
       include: {
         member: true,

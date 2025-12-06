@@ -32,6 +32,12 @@ enum LoanStatus {
   DEFAULTED   // Defaulted on payments
 }
 
+enum PaymentMethod {
+  CASH           // Cash payment
+  UPI            // UPI transfer
+  BANK_TRANSFER  // Bank transfer (NEFT/RTGS/IMPS)
+}
+
 model User {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   email         String    @unique
@@ -58,6 +64,8 @@ model Member {
   accountNumber String?   @unique
   phone         String?
   photo         String?   // URL to photo
+  ifscCode      String?   // IFSC code for bank transfers
+  upiId         String?   // UPI ID (e.g., name@paytm, phone@upi)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -201,6 +209,7 @@ model Loan {
   guarantor2Id  String?   @db.ObjectId
   guarantor2    Member?   @relation("LoanGuarantor2", fields: [guarantor2Id], references: [id])
   latePaymentPenalty Float @default(0) // Additional penalty per month delayed
+  disbursementMethod PaymentMethod? // How loan was disbursed
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -218,6 +227,7 @@ model LoanTransaction {
   penalty       Float     @default(0) // Penalty amount paid
   remaining     Float     // Remaining balance after this payment
   month          Int       // Month number (1-10)
+  paymentMethod PaymentMethod? // How repayment was made
   createdAt     DateTime  @default(now())
 
   @@map("loan_transactions")

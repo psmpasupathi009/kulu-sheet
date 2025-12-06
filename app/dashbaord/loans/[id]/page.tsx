@@ -103,6 +103,7 @@ export default function LoanDetailPage() {
     paymentDate: new Date().toISOString().split("T")[0],
     isLate: false,
     overdueMonths: 0,
+    paymentMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
   });
 
   // Calculate monthly payment amount based on loan (no interest)
@@ -201,6 +202,7 @@ export default function LoanDetailPage() {
           paymentDate: paymentForm.paymentDate,
           isLate: paymentForm.isLate,
           overdueMonths: paymentForm.overdueMonths,
+          paymentMethod: paymentForm.paymentMethod || undefined,
         }),
       });
 
@@ -224,6 +226,7 @@ export default function LoanDetailPage() {
           paymentDate: new Date().toISOString().split("T")[0],
           isLate: false,
           overdueMonths: 0,
+          paymentMethod: "",
         });
         // Refresh loan data
         await fetchLoan(loan.id);
@@ -619,6 +622,29 @@ export default function LoanDetailPage() {
                           </FieldDescription>
                         </Field>
                       )}
+                      <Field>
+                        <FieldLabel htmlFor="paymentMethod">
+                          Payment Method (Optional)
+                        </FieldLabel>
+                        <select
+                          id="paymentMethod"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          value={paymentForm.paymentMethod}
+                          onChange={(e) =>
+                            setPaymentForm({
+                              ...paymentForm,
+                              paymentMethod: e.target.value as "CASH" | "UPI" | "BANK_TRANSFER" | "",
+                            })
+                          }>
+                          <option value="">Select payment method</option>
+                          <option value="CASH">Cash</option>
+                          <option value="UPI">UPI</option>
+                          <option value="BANK_TRANSFER">Bank Transfer</option>
+                        </select>
+                        <FieldDescription>
+                          How the repayment was made
+                        </FieldDescription>
+                      </Field>
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Button
                           className="flex-1"
