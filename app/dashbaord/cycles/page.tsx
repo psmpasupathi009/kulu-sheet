@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import {
   Plus,
   Calendar,
@@ -99,7 +99,6 @@ export default function CyclesPage() {
   const { user } = useAuth();
   const [cycles, setCycles] = useState<LoanCycle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [disbursingSequence, setDisbursingSequence] = useState<string | null>(
     null
   );
@@ -120,7 +119,6 @@ export default function CyclesPage() {
     isActive: true,
     monthlyAmount: 0,
   });
-  const [success, setSuccess] = useState("");
   const [showAddMember, setShowAddMember] = useState<string | null>(null);
   const [addMemberForm, setAddMemberForm] = useState({
     memberId: "",
@@ -178,12 +176,11 @@ export default function CyclesPage() {
 
   const handleAddMemberToCycle = async (cycleId: string) => {
     if (!addMemberForm.memberId || !addMemberForm.monthlyAmount) {
-      setError("Please fill all required fields");
+      toast.error("Please fill all required fields");
       return;
     }
 
     setAddingMember(true);
-    setError("");
 
     try {
       const response = await fetch(`/api/cycles/${cycleId}/members`, {
@@ -202,7 +199,7 @@ export default function CyclesPage() {
         throw new Error(data.error || "Failed to add member");
       }
 
-      setSuccess(
+      toast.success(
         `Member added successfully! Catch-up payment: ₹${data.catchUpAmount.toFixed(2)} (${data.loansAlreadyGiven || 0} loans already given × ₹${addMemberForm.monthlyAmount})`
       );
       setShowAddMember(null);
@@ -212,9 +209,8 @@ export default function CyclesPage() {
         joiningDate: new Date().toISOString().split("T")[0],
       });
       fetchCycles();
-      setTimeout(() => setSuccess(""), 5000);
     } catch (err: any) {
-      setError(err.message || "Failed to add member to cycle");
+      toast.error(err.message || "Failed to add member to cycle");
     } finally {
       setAddingMember(false);
     }
@@ -227,11 +223,11 @@ export default function CyclesPage() {
         const data = await response.json();
         setCycles(data.cycles);
       } else {
-        setError("Failed to fetch cycles");
+        toast.error("Failed to fetch cycles");
       }
     } catch (error) {
       console.error("Error fetching cycles:", error);
-      setError("Failed to fetch cycles");
+      toast.error("Failed to fetch cycles");
     } finally {
       setLoading(false);
     }
@@ -252,7 +248,6 @@ export default function CyclesPage() {
   const handleUpdate = async () => {
     if (!editingCycle) return;
 
-    setError("");
     try {
       const response = await fetch(`/api/cycles/${editingCycle}`, {
         method: "PUT",
@@ -266,42 +261,39 @@ export default function CyclesPage() {
       });
 
       if (response.ok) {
-        setSuccess("Cycle updated successfully!");
+        toast.success("Cycle updated successfully!");
         setEditingCycle(null);
         await fetchCycles();
-        setTimeout(() => setSuccess(""), 3000);
       } else {
         const errorData = await response.json();
-        setError(errorData.error || "Failed to update cycle");
+        toast.error(errorData.error || "Failed to update cycle");
       }
     } catch (error) {
       console.error("Error updating cycle:", error);
-      setError("Failed to update cycle");
+      toast.error("Failed to update cycle");
     }
   };
 
   const handleDelete = async () => {
     if (!deletingCycle) return;
 
-    setError("");
     try {
       const response = await fetch(`/api/cycles/${deletingCycle}`, {
         method: "DELETE",
       });
 
       if (response.ok) {
-        setSuccess("Cycle deleted successfully!");
+        toast.success("Cycle deleted successfully!");
         setDeletingCycle(null);
         await fetchCycles();
-        setTimeout(() => setSuccess(""), 3000);
       } else {
         const errorData = await response.json();
-        setError(errorData.error || "Failed to delete cycle");
+        toast.error(errorData.error || "Failed to delete cycle");
         setDeletingCycle(null);
       }
     } catch (error) {
       console.error("Error deleting cycle:", error);
-      setError("Failed to delete cycle");
+      toast.error("Failed to delete cycle");
       setDeletingCycle(null);
     }
   };
@@ -329,19 +321,6 @@ export default function CyclesPage() {
         )}
       </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {success && (
-        <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
-          <AlertDescription className="text-green-800 dark:text-green-200">
-            {success}
-          </AlertDescription>
-        </Alert>
-      )}
 
       {cycles.length === 0 ? (
         <Card>
@@ -725,11 +704,10 @@ export default function CyclesPage() {
                     className="flex-1"
                     onClick={async () => {
                       if (!createCollectionForm.month || !createCollectionForm.collectionDate) {
-                        setError("Please fill all fields");
+                        toast.error("Please fill all fields");
                         return;
                       }
                       setCreatingCollection(true);
-                      setError("");
                       try {
                         const cycle = cycles.find((c) => c.id === showCreateCollection);
                         if (!cycle) return;
@@ -749,16 +727,15 @@ export default function CyclesPage() {
                           throw new Error(data.error || "Failed to create collection");
                         }
 
-                        setSuccess("Collection created successfully!");
+                        toast.success("Collection created successfully!");
                         setShowCreateCollection(null);
                         setCreateCollectionForm({
                           month: "",
                           collectionDate: new Date().toISOString().split("T")[0],
                         });
                         fetchCycles();
-                        setTimeout(() => setSuccess(""), 3000);
                       } catch (err: any) {
-                        setError(err.message || "Failed to create collection");
+                        toast.error(err.message || "Failed to create collection");
                       } finally {
                         setCreatingCollection(false);
                       }
@@ -866,11 +843,10 @@ export default function CyclesPage() {
                     className="flex-1"
                     onClick={async () => {
                       if (!recordPaymentForm.memberId || !recordPaymentForm.amount) {
-                        setError("Please fill all required fields");
+                        toast.error("Please fill all required fields");
                         return;
                       }
                       setRecordingPayment(true);
-                      setError("");
                       try {
                         const response = await fetch("/api/collections", {
                           method: "PUT",
@@ -888,7 +864,7 @@ export default function CyclesPage() {
                           throw new Error(data.error || "Failed to record payment");
                         }
 
-                        setSuccess("Payment recorded successfully! Loan will be automatically disbursed when collection is complete.");
+                        toast.success("Payment recorded successfully! Loan will be automatically disbursed when collection is complete.");
                         setShowRecordPayment(null);
                         setRecordPaymentForm({
                           memberId: "",
@@ -896,9 +872,8 @@ export default function CyclesPage() {
                           paymentMethod: "",
                         });
                         fetchCycles();
-                        setTimeout(() => setSuccess(""), 5000);
                       } catch (err: any) {
-                        setError(err.message || "Failed to record payment");
+                        toast.error(err.message || "Failed to record payment");
                       } finally {
                         setRecordingPayment(false);
                       }
@@ -1035,16 +1010,16 @@ export default function CyclesPage() {
                           }),
                         });
                         if (response.ok) {
-                          alert("Loan disbursed successfully!");
+                          toast.success("Loan disbursed successfully!");
                           setShowDisburseForm(false);
                           setDisbursingSequence(null);
                           fetchCycles();
                         } else {
                           const error = await response.json();
-                          alert(error.error || "Failed to disburse loan");
+                          toast.error(error.error || "Failed to disburse loan");
                         }
                       } catch (error) {
-                        alert("Failed to disburse loan");
+                        toast.error("Failed to disburse loan");
                       }
                     }}>
                     Disburse Loan

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { toast } from 'sonner'
 import { ArrowLeft, DollarSign, Calendar, User } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
@@ -26,8 +26,6 @@ export default function NewSavingsPage() {
     amount: '100',
     date: new Date().toISOString().split('T')[0],
   })
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -51,18 +49,16 @@ export default function NewSavingsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
-    setSuccess('')
     setSubmitting(true)
 
     if (!formData.memberId) {
-      setError('Please select a member')
+      toast.error('Please select a member')
       setSubmitting(false)
       return
     }
 
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      setError('Amount must be greater than 0')
+      toast.error('Amount must be greater than 0')
       setSubmitting(false)
       return
     }
@@ -84,12 +80,12 @@ export default function NewSavingsPage() {
         throw new Error(data.error || 'Failed to record contribution')
       }
 
-      setSuccess(`₹${formData.amount} contribution recorded successfully!`)
+      toast.success(`₹${formData.amount} contribution recorded successfully!`)
       setTimeout(() => {
         router.push('/dashbaord/savings')
       }, 1500)
     } catch (err: any) {
-      setError(err.message || 'Failed to record contribution')
+      toast.error(err.message || 'Failed to record contribution')
     } finally {
       setSubmitting(false)
     }
@@ -98,9 +94,9 @@ export default function NewSavingsPage() {
   if (user?.role !== 'ADMIN') {
     return (
       <div className="space-y-4">
-        <Alert variant="destructive">
-          <AlertDescription>Access denied. Admin privileges required.</AlertDescription>
-        </Alert>
+        <div className="p-4 border border-destructive rounded-md bg-destructive/10">
+          <p className="text-destructive">Access denied. Admin privileges required.</p>
+        </div>
         <Button variant="outline" asChild>
           <Link href="/dashbaord/savings">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -140,18 +136,6 @@ export default function NewSavingsPage() {
         <CardContent className="p-4 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             <FieldGroup>
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              {success && (
-                <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
-                  <AlertDescription className="text-green-800 dark:text-green-200">
-                    {success}
-                  </AlertDescription>
-                </Alert>
-              )}
 
               <Field>
                 <FieldLabel htmlFor="memberId">

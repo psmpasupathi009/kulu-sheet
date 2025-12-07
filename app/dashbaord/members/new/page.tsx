@@ -17,7 +17,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import {
   User,
   UserPlus,
@@ -47,8 +47,6 @@ export default function NewMemberPage() {
     ifscCode: "",
     upiId: "",
   });
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [checkingUser, setCheckingUser] = useState(false);
   const [userFound, setUserFound] = useState<{
@@ -59,12 +57,10 @@ export default function NewMemberPage() {
   const checkUserExists = async (userId: string) => {
     if (!userId.trim()) {
       setUserFound(null);
-      setError("");
       return;
     }
 
     setCheckingUser(true);
-    setError("");
     try {
       // Check if member already exists
       const memberResponse = await fetch(`/api/members`);
@@ -74,7 +70,7 @@ export default function NewMemberPage() {
           (m: any) => m.userId === userId.trim()
         );
         if (existingMember) {
-          setError(`Member with User ID "${userId}" already exists!`);
+          toast.error(`Member with User ID "${userId}" already exists!`);
           setUserFound(null);
           setCheckingUser(false);
           return;
@@ -98,8 +94,7 @@ export default function NewMemberPage() {
           name: data.user.name || prev.name,
           phone: data.user.phone || prev.phone,
         }));
-        setSuccess(`User found! Pre-filled name and phone from user account.`);
-        setTimeout(() => setSuccess(""), 3000);
+        toast.success(`User found! Pre-filled name and phone from user account.`);
       } else {
         // User doesn't exist - that's okay, they can still create member
         setUserFound(null);
@@ -114,25 +109,23 @@ export default function NewMemberPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
     setSubmitting(true);
 
     // Validation
     if (!formData.userId.trim()) {
-      setError("User ID is required");
+      toast.error("User ID is required");
       setSubmitting(false);
       return;
     }
 
     if (!formData.name.trim()) {
-      setError("Name is required");
+      toast.error("Name is required");
       setSubmitting(false);
       return;
     }
 
     if (!formData.email.trim()) {
-      setError("Email is required");
+      toast.error("Email is required");
       setSubmitting(false);
       return;
     }
@@ -140,7 +133,7 @@ export default function NewMemberPage() {
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email.trim())) {
-      setError("Please enter a valid email address");
+      toast.error("Please enter a valid email address");
       setSubmitting(false);
       return;
     }
@@ -169,14 +162,14 @@ export default function NewMemberPage() {
         throw new Error(data.error || "Failed to create member");
       }
 
-      setSuccess(
+      toast.success(
         "Member and user account created successfully! The member can now login with their email."
       );
       setTimeout(() => {
         router.push("/dashbaord/members");
       }, 1500);
     } catch (err: any) {
-      setError(err.message || "Failed to create member");
+      toast.error(err.message || "Failed to create member");
     } finally {
       setSubmitting(false);
     }
@@ -185,11 +178,9 @@ export default function NewMemberPage() {
   if (user?.role !== "ADMIN") {
     return (
       <div className="space-y-4">
-        <Alert variant="destructive">
-          <AlertDescription>
-            Access denied. Admin privileges required.
-          </AlertDescription>
-        </Alert>
+        <div className="p-4 border border-destructive rounded-md bg-destructive/10">
+          <p className="text-destructive">Access denied. Admin privileges required.</p>
+        </div>
         <Button variant="outline" asChild>
           <Link href="/dashbaord/members">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -227,18 +218,6 @@ export default function NewMemberPage() {
         <CardContent className="p-4 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             <FieldGroup>
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              {success && (
-                <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
-                  <AlertDescription className="text-green-800 dark:text-green-200">
-                    {success}
-                  </AlertDescription>
-                </Alert>
-              )}
 
               <Field>
                 <FieldLabel htmlFor="userId">
@@ -259,7 +238,6 @@ export default function NewMemberPage() {
                     onChange={(e) => {
                       setFormData({ ...formData, userId: e.target.value });
                       setUserFound(null);
-                      setSuccess("");
                     }}
                     onBlur={(e) => {
                       if (e.target.value.trim()) {

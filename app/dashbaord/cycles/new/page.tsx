@@ -17,7 +17,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Calendar,
@@ -44,8 +44,6 @@ export default function NewCyclePage() {
     monthlyAmount: "2000",
     startDate: new Date().toISOString().split("T")[0],
   });
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -77,19 +75,17 @@ export default function NewCyclePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
     setSubmitting(true);
 
     // Validation
     if (selectedMemberIds.length === 0) {
-      setError("Please select at least one member");
+      toast.error("Please select at least one member");
       setSubmitting(false);
       return;
     }
 
     if (!formData.monthlyAmount || parseFloat(formData.monthlyAmount) <= 0) {
-      setError("Please enter a valid monthly contribution amount");
+      toast.error("Please enter a valid monthly contribution amount");
       setSubmitting(false);
       return;
     }
@@ -114,12 +110,12 @@ export default function NewCyclePage() {
         throw new Error(data.error || "Failed to create cycle");
       }
 
-      setSuccess(data.message || "Cycle created successfully!");
+      toast.success(data.message || "Cycle created successfully!");
       setTimeout(() => {
         router.push("/dashbaord/cycles");
       }, 2000);
     } catch (err: any) {
-      setError(err.message || "Failed to create cycle");
+      toast.error(err.message || "Failed to create cycle");
     } finally {
       setSubmitting(false);
     }
@@ -128,11 +124,11 @@ export default function NewCyclePage() {
   if (user?.role !== "ADMIN") {
     return (
       <div className="space-y-4">
-        <Alert variant="destructive">
-          <AlertDescription>
+        <div className="p-4 border border-destructive rounded-md bg-destructive/10">
+          <p className="text-destructive">
             Access denied. Admin privileges required.
-          </AlertDescription>
-        </Alert>
+          </p>
+        </div>
         <Button variant="outline" asChild>
           <Link href="/dashbaord/cycles">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -170,18 +166,6 @@ export default function NewCyclePage() {
         </div>
       </div>
 
-      {(error || success) && (
-        <Alert
-          variant={error ? "destructive" : "default"}
-          className={
-            success ? "border-green-200 bg-green-50 dark:bg-green-900/20" : ""
-          }>
-          <AlertDescription
-            className={success ? "text-green-800 dark:text-green-200" : ""}>
-            {error || success}
-          </AlertDescription>
-        </Alert>
-      )}
 
       <Card>
         <CardHeader>

@@ -25,7 +25,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import Link from "next/link";
 import { ArrowLeft, Calendar, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
@@ -164,8 +164,6 @@ export default function LoanDetailPage() {
         accumulatedPenalty: 0,
         totalPenalty: 0,
       };
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     if (params.id) {
@@ -190,8 +188,6 @@ export default function LoanDetailPage() {
   const handleRepay = async () => {
     if (!loan) return;
 
-    setError("");
-    setSuccess("");
     setRepaying(true);
     try {
       const response = await fetch("/api/loans/repay", {
@@ -220,7 +216,7 @@ export default function LoanDetailPage() {
           )} included.`;
         }
 
-        setSuccess(successMessage);
+        toast.success(successMessage);
         setShowPaymentForm(false);
         setPaymentForm({
           paymentDate: new Date().toISOString().split("T")[0],
@@ -230,14 +226,13 @@ export default function LoanDetailPage() {
         });
         // Refresh loan data
         await fetchLoan(loan.id);
-        setTimeout(() => setSuccess(""), 5000);
       } else {
         const errorData = await response.json();
-        setError(errorData.error || "Failed to record payment");
+        toast.error(errorData.error || "Failed to record payment");
       }
     } catch (error) {
       console.error("Error recording payment:", error);
-      setError("Failed to record payment");
+      toast.error("Failed to record payment");
     } finally {
       setRepaying(false);
     }
@@ -261,16 +256,15 @@ export default function LoanDetailPage() {
       });
 
       if (response.ok) {
-        setSuccess("Loan marked as defaulted");
+        toast.success("Loan marked as defaulted");
         await fetchLoan(loan.id);
-        setTimeout(() => setSuccess(""), 3000);
       } else {
         const errorData = await response.json();
-        setError(errorData.error || "Failed to update loan status");
+        toast.error(errorData.error || "Failed to update loan status");
       }
     } catch (error) {
       console.error("Error updating loan:", error);
-      setError("Failed to update loan status");
+      toast.error("Failed to update loan status");
     }
   };
 
@@ -450,46 +444,35 @@ export default function LoanDetailPage() {
                       <CardTitle className="text-lg">Record Payment</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {error && (
-                        <Alert variant="destructive">
-                          <AlertDescription>{error}</AlertDescription>
-                        </Alert>
-                      )}
-                      {success && (
-                        <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
-                          <AlertDescription className="text-green-800 dark:text-green-200">
-                            {success}
-                          </AlertDescription>
-                        </Alert>
-                      )}
                       {missedMonthsInfo.missedMonths > 0 && (
-                        <Alert variant="destructive" className="mb-3">
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertDescription>
-                            <div className="font-semibold mb-1">
-                              ⚠️ {missedMonthsInfo.missedMonths} Month(s) Missed
-                              Payment
+                        <div className="p-4 border border-destructive rounded-md bg-destructive/10 mb-3">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
+                            <div className="flex-1">
+                              <div className="font-semibold mb-1 text-destructive">
+                                ⚠️ {missedMonthsInfo.missedMonths} Month(s) Missed Payment
+                              </div>
+                              <div className="text-sm space-y-1 text-destructive">
+                                <div>
+                                  Expected Month: {missedMonthsInfo.expectedMonth} |
+                                  Current: {loan.currentMonth + 1}
+                                </div>
+                                <div>
+                                  Accumulated Interest: ₹0.00 (No interest)
+                                </div>
+                                <div>
+                                  Late Penalty: ₹
+                                  {(missedMonthsInfo.accumulatedPenalty ?? 0).toFixed(2)}{" "}
+                                  (0.5% per month)
+                                </div>
+                                <div className="font-semibold mt-1">
+                                  Additional Amount Due: ₹
+                                  {(missedMonthsInfo.totalPenalty ?? 0).toFixed(2)}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-sm space-y-1">
-                              <div className="text-red-600">
-                                Expected Month: {missedMonthsInfo.expectedMonth} |
-                                Current: {loan.currentMonth + 1}
-                              </div>
-                              <div className="text-red-600">
-                                Accumulated Interest: ₹0.00 (No interest)
-                              </div>
-                              <div className="text-red-600">
-                                Late Penalty: ₹
-                                {(missedMonthsInfo.accumulatedPenalty ?? 0).toFixed(2)}{" "}
-                                (0.5% per month)
-                              </div>
-                              <div className="font-semibold mt-1 text-red-600">
-                                Additional Amount Due: ₹
-                                {(missedMonthsInfo.totalPenalty ?? 0).toFixed(2)}
-                              </div>
-                            </div>
-                          </AlertDescription>
-                        </Alert>
+                          </div>
+                        </div>
                       )}
 
                       <div
@@ -656,8 +639,6 @@ export default function LoanDetailPage() {
                           variant="outline"
                           onClick={() => {
                             setShowPaymentForm(false);
-                            setError("");
-                            setSuccess("");
                           }}
                           disabled={repaying}>
                           Cancel

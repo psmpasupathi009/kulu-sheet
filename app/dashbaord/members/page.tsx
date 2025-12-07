@@ -26,7 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 
 interface Member {
   id: string;
@@ -41,7 +41,6 @@ interface Member {
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { user } = useAuth();
   const router = useRouter();
@@ -65,7 +64,6 @@ export default function MembersPage() {
   };
 
   const handleDelete = async (memberId: string, memberName: string) => {
-    setError("");
     setDeletingId(memberId);
 
     try {
@@ -78,10 +76,11 @@ export default function MembersPage() {
         throw new Error(data.error || "Failed to delete member");
       }
 
+      toast.success(`Member "${memberName}" deleted successfully`);
       // Refresh the list
       fetchMembers();
     } catch (err: any) {
-      setError(err.message || "Failed to delete member");
+      toast.error(err.message || "Failed to delete member");
     } finally {
       setDeletingId(null);
     }
@@ -106,12 +105,6 @@ export default function MembersPage() {
           </Button>
         )}
       </div>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
 
       <Card>
         <CardHeader>
