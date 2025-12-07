@@ -73,6 +73,14 @@ export default function NewSavingsPage() {
     }
   }, [isMonthlyContribution])
 
+  // Refresh financing groups when month or group changes to get latest payment data
+  useEffect(() => {
+    if (isMonthlyContribution && selectedGroupId && selectedMonth) {
+      // Refresh data when month changes to get latest payment status
+      fetchFinancingGroups()
+    }
+  }, [selectedMonth, selectedGroupId, isMonthlyContribution])
+
   const fetchMembers = async () => {
     try {
       const response = await fetch('/api/members')
@@ -89,10 +97,12 @@ export default function NewSavingsPage() {
 
   const fetchFinancingGroups = async () => {
     try {
-      const response = await fetch('/api/financing-groups')
+      // Add cache-busting timestamp to ensure fresh data
+      const response = await fetch(`/api/financing-groups?t=${Date.now()}`)
       if (response.ok) {
         const data = await response.json()
-        setFinancingGroups(data.groups.filter((g: FinancingGroup) => g.isActive))
+        const activeGroups = data.groups.filter((g: FinancingGroup) => g.isActive)
+        setFinancingGroups(activeGroups)
       }
     } catch (error) {
       console.error('Error fetching financing groups:', error)
@@ -135,16 +145,20 @@ export default function NewSavingsPage() {
       )
     }
     
-    // Get members who have already paid
-    const paidMemberIds = collection.payments
-      .filter(p => p.status === 'PAID')
+    // Get members who have already paid (check status case-insensitively)
+    const paidMemberIds = (collection.payments || [])
+      .filter(p => {
+        const status = String(p.status || '').toUpperCase()
+        return status === 'PAID'
+      })
       .map(p => p.memberId)
     
     // Return only group members who haven't paid
-    return members.filter(m => 
-      selectedGroup.members.some(gm => gm.memberId === m.id) &&
-      !paidMemberIds.includes(m.id)
-    )
+    return members.filter(m => {
+      const isGroupMember = selectedGroup.members.some(gm => gm.memberId === m.id)
+      const hasPaid = paidMemberIds.includes(m.id)
+      return isGroupMember && !hasPaid
+    })
   }
   
   // Filter members to show only unpaid ones when monthly contribution is selected
@@ -251,6 +265,12 @@ export default function NewSavingsPage() {
         toast.success(
           `₹${parseFloat(formData.amount).toFixed(2)} monthly contribution recorded for ${selectedMemberIds.length} member(s) in month ${selectedMonth}!`
         )
+        
+        // Refresh financing groups to update unpaid members list
+        await fetchFinancingGroups()
+        
+        // Clear selected members after successful payment
+        setSelectedMemberIds([])
         
         // Redirect to financing groups page to see the updated collection
         setTimeout(() => {

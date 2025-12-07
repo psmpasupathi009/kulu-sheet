@@ -61,7 +61,8 @@ export default function SavingsDetailPage() {
 
   const fetchSavings = async (id: string) => {
     try {
-      const response = await fetch(`/api/savings/${id}`)
+      // Add cache-busting to ensure fresh data
+      const response = await fetch(`/api/savings/${id}?t=${Date.now()}`)
       if (response.ok) {
         const data = await response.json()
         setSavings(data.savings)

@@ -22,8 +22,6 @@ import {
   Users,
   PiggyBank,
   CreditCard,
-  FileText,
-  FileSpreadsheet,
   Settings,
   RotateCcw,
   User,
@@ -70,18 +68,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Financing Groups",
       url: "/dashbaord/cycles",
       icon: RotateCcw,
-      items: [],
-    },
-    {
-      title: "Miscellaneous",
-      url: "/dashbaord/miscellaneous",
-      icon: FileText,
-      items: [],
-    },
-    {
-      title: "Monthly Statements",
-      url: "/dashbaord/statements",
-      icon: FileSpreadsheet,
       items: [],
     },
     {

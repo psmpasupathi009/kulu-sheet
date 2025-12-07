@@ -123,7 +123,8 @@ export default function CyclesPage() {
 
   const fetchGroups = async () => {
     try {
-      const response = await fetch("/api/financing-groups");
+      // Add cache-busting to ensure fresh data
+      const response = await fetch(`/api/financing-groups?t=${Date.now()}`);
       if (response.ok) {
         const data = await response.json();
         setGroups(data.groups || []);
@@ -717,6 +718,50 @@ export default function CyclesPage() {
                     </div>
                   )}
 
+                  {/* Payments List */}
+                  {currentCollection && currentCollection.payments && currentCollection.payments.length > 0 && (
+                    <div className="border rounded-lg p-4 bg-muted/30">
+                      <h3 className="text-sm font-semibold mb-3">
+                        Payments Recorded ({format(addMonths(new Date(group.startDate), currentCollection.month - 1), 'MMMM yyyy')})
+                      </h3>
+                      <div className="space-y-2">
+                        {currentCollection.payments
+                          .filter(p => p.status === 'PAID' || p.status === 'Paid' || p.status === 'paid')
+                          .map((payment) => {
+                            const member = group.members.find(gm => gm.memberId === payment.memberId);
+                            return (
+                              <div key={payment.id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-900 rounded border">
+                                <div>
+                                  <div className="font-medium text-sm">
+                                    {member?.member.name || 'Unknown'} ({member?.member.userId || 'N/A'})
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {format(new Date(payment.paymentDate), 'dd MMM yyyy')}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-semibold text-green-600">
+                                    ₹{payment.amount?.toFixed(2) || '0.00'}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {payment.status}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Total Collected:</span>
+                          <span className="font-semibold">
+                            ₹{currentCollection.totalCollected.toFixed(2)} / ₹{currentCollection.expectedAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Record Payment */}
                   {currentCollection && !currentCollection.loanDisbursed && (
                     <div className="border rounded-lg p-4 bg-muted/30">
@@ -752,53 +797,62 @@ export default function CyclesPage() {
                                 required
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                                 <option value="">Select member</option>
-                                {group.members
-                                  .filter(
+                                {(() => {
+                                  // Get unpaid members for the current collection's month
+                                  const unpaidMembers = group.members.filter(
+                                    (gm) => {
+                                      if (!currentCollection) return true;
+                                      // Check if this member has paid in the current collection
+                                      const hasPaid = (currentCollection.payments || []).some(
+                                        (p) => p.memberId === gm.memberId && p.status === "PAID"
+                                      );
+                                      return !hasPaid;
+                                    }
+                                  );
+                                  return unpaidMembers.map((gm) => (
+                                    <option key={gm.memberId} value={gm.memberId}>
+                                      {gm.member.name} ({gm.member.userId})
+                                    </option>
+                                  ));
+                                })()}
+                                {(() => {
+                                  if (!currentCollection) return null;
+                                  const unpaidCount = group.members.filter(
                                     (gm) =>
                                       !(currentCollection.payments || []).some(
                                         (p) => p.memberId === gm.memberId && p.status === "PAID"
                                       )
-                                  )
-                                  .map((gm) => (
-                                    <option key={gm.memberId} value={gm.memberId}>
-                                      {gm.member.name} ({gm.member.userId})
-                                    </option>
-                                  ))}
-                                {group.members.filter(
+                                  ).length;
+                                  if (unpaidCount === 0) {
+                                    return (
+                                      <option value="" disabled>All members have paid for this month</option>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </select>
+                              {(() => {
+                                if (!currentCollection) return null;
+                                const unpaidCount = group.members.filter(
                                   (gm) =>
                                     !(currentCollection.payments || []).some(
                                       (p) => p.memberId === gm.memberId && p.status === "PAID"
                                     )
-                                ).length === 0 && (
-                                  <option value="" disabled>All members have paid for this month</option>
-                                )}
-                              </select>
-                              {group.members.filter(
-                                (gm) =>
-                                  !(currentCollection.payments || []).some(
-                                    (p) => p.memberId === gm.memberId && p.status === "PAID"
-                                  )
-                              ).length === 0 && (
-                                <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                  All members have paid for this month
-                                </p>
-                              )}
-                              {group.members.filter(
-                                (gm) =>
-                                  !(currentCollection.payments || []).some(
-                                    (p) => p.memberId === gm.memberId && p.status === "PAID"
-                                  )
-                              ).length > 0 && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Showing only unpaid members ({group.members.filter(
-                                    (gm) =>
-                                      !(currentCollection.payments || []).some(
-                                        (p) => p.memberId === gm.memberId && p.status === "PAID"
-                                      )
-                                  ).length} remaining)
-                                </p>
-                              )}
+                                ).length;
+                                if (unpaidCount === 0) {
+                                  return (
+                                    <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      All members have paid for this month
+                                    </p>
+                                  );
+                                }
+                                return (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Showing only unpaid members ({unpaidCount} remaining)
+                                  </p>
+                                );
+                              })()}
               </Field>
               <Field>
                               <FieldLabel>Amount</FieldLabel>

@@ -129,9 +129,12 @@ export default function LoanDetailPage() {
   // Auto-select payment date based on loan disbursement date and next payment month
   useEffect(() => {
     if (loan && loan.disbursedAt && !showPaymentForm) {
-      // Calculate next payment date: disbursement date + currentMonth months
+      // Calculate next payment date: disbursement date + (currentMonth + 1) months
+      // If currentMonth is 0 (no payments), next payment is month 1 = disbursement date + 1 month
+      // If currentMonth is 1 (1 payment made), next payment is month 2 = disbursement date + 2 months
       const disbursedDate = new Date(loan.disbursedAt);
-      const nextPaymentDate = addMonths(disbursedDate, loan.currentMonth);
+      const nextMonth = loan.currentMonth + 1;
+      const nextPaymentDate = addMonths(disbursedDate, nextMonth);
       setPaymentForm({
         ...paymentForm,
         paymentDate: format(nextPaymentDate, 'yyyy-MM-dd'),
@@ -141,7 +144,8 @@ export default function LoanDetailPage() {
 
   const fetchLoan = async (id: string) => {
     try {
-      const response = await fetch(`/api/loans/${id}`);
+      // Add cache-busting to ensure fresh data
+      const response = await fetch(`/api/loans/${id}?t=${Date.now()}`);
       if (response.ok) {
         const data = await response.json();
         setLoan(data.loan);
@@ -176,8 +180,13 @@ export default function LoanDetailPage() {
           paymentDate: new Date().toISOString().split("T")[0],
           paymentMethod: "",
         });
-        // Refresh loan data
+        // Refresh loan data with cache-busting
         await fetchLoan(loan.id);
+        // Force UI update by resetting loading state briefly
+        setLoading(true);
+        setTimeout(() => {
+          fetchLoan(loan.id).then(() => setLoading(false));
+        }, 100);
       } else {
         const errorData = await response.json();
         // Show detailed error message if payment already exists
@@ -445,7 +454,7 @@ export default function LoanDetailPage() {
                                 Due Date:
                               </span>
                               <span className="font-medium">
-                                {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth), 'dd MMM yyyy')}
+                                {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth + 1), 'dd MMM yyyy')}
                               </span>
                             </div>
                           )}
@@ -510,7 +519,7 @@ export default function LoanDetailPage() {
                           Payment Date
                           {loan.disbursedAt && (
                             <span className="ml-2 text-xs text-blue-600 dark:text-blue-400 font-normal">
-                              (Auto-selected: {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth), 'dd MMM yyyy')})
+                              (Auto-selected: {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth + 1), 'dd MMM yyyy')})
                             </span>
                           )}
                         </FieldLabel>
@@ -527,7 +536,7 @@ export default function LoanDetailPage() {
                         />
                         {loan.disbursedAt && (
                           <FieldDescription>
-                            Due date for Month {loan.currentMonth + 1}: {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth), 'dd MMMM yyyy')}
+                            Due date for Month {loan.currentMonth + 1}: {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth + 1), 'dd MMMM yyyy')}
                           </FieldDescription>
                         )}
                       </Field>
@@ -632,9 +641,11 @@ export default function LoanDetailPage() {
                     const isPaid = loan.transactions.some(
                       (t) => t.month === schedule.month
                     );
-                    // Calculate due date: disbursement date + (month - 1) months
+                    // Calculate due date: disbursement date + month months
+                    // Month 1 payment is due 1 month after disbursement
+                    // Month 2 payment is due 2 months after disbursement
                     const dueDate = loan.disbursedAt 
-                      ? addMonths(new Date(loan.disbursedAt), schedule.month - 1)
+                      ? addMonths(new Date(loan.disbursedAt), schedule.month)
                       : null;
                     return (
                       <TableRow

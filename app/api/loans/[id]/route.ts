@@ -167,3 +167,64 @@ export async function PUT(
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth-token")?.value;
+
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = await verifyToken(token);
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Forbidden - Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await params;
+    const loan = await prisma.loan.findUnique({
+      where: { id },
+      include: {
+        transactions: true,
+      },
+    });
+
+    if (!loan) {
+      return NextResponse.json(
+        { error: "Loan not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if loan has transactions - if so, warn but allow deletion
+    if (loan.transactions.length > 0) {
+      // Delete all transactions first
+      await prisma.loanTransaction.deleteMany({
+        where: { loanId: id },
+      });
+    }
+
+    // Delete the loan
+    await prisma.loan.delete({
+      where: { id },
+    });
+
+    return NextResponse.json(
+      { message: "Loan deleted successfully" },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error deleting loan:", error);
+    return NextResponse.json(
+      { error: "Failed to delete loan" },
+      { status: 500 }
+    );
+  }
+}
+

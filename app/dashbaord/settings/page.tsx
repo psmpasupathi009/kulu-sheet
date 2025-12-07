@@ -33,8 +33,6 @@ export default function SettingsPage() {
                   <li>Create, edit, and delete members</li>
                   <li>Manage savings and loan transactions</li>
                   <li>Upload photos and PDFs</li>
-                  <li>Create and manage events</li>
-                  <li>Upload monthly statements</li>
                   <li>View all user data</li>
                 </ul>
               </div>

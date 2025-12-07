@@ -43,8 +43,17 @@ export async function GET(request: NextRequest) {
           include: {
             payments: {
               select: {
+                id: true,
                 memberId: true,
+                amount: true,
+                paymentDate: true,
                 status: true,
+                member: {
+                  select: {
+                    name: true,
+                    userId: true,
+                  },
+                },
               },
             },
           },
