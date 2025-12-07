@@ -380,6 +380,7 @@ export default function DashboardPage() {
           <div className="rounded-md border">
             {/* Savings Table */}
             {activeTab === "savings" && (
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -519,6 +520,7 @@ export default function DashboardPage() {
                   )}
                 </TableBody>
               </Table>
+            </div>
             )}
 
             {/* Collections Table */}

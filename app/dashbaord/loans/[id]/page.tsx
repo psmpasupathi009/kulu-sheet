@@ -243,9 +243,7 @@ export default function LoanDetailPage() {
     }
   };
 
-  // Calculate monthly payment based on group's monthly investment amount
-  // This is the fixed amount each member pays per month (e.g., ₹2000)
-  const remainingMonthsForSchedule = loan ? loan.months - loan.currentMonth : loan?.months || 0;
+  const remainingMonthsForSchedule = loan ? loan.months - loan.currentMonth : 0;
   const monthlyPaymentForSchedule = loan 
     ? (loan.group?.monthlyAmount 
         ? Math.min(loan.group.monthlyAmount, loan.remaining)

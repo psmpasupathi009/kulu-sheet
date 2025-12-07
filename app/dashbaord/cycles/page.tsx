@@ -1350,10 +1350,11 @@ export default function CyclesPage() {
                           ))}
                         </TableBody>
                       </Table>
+                      </div>
                     </div>
                   )}
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
             );
           })}
         </div>

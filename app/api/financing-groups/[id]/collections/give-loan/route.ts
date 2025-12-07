@@ -158,7 +158,7 @@ export async function POST(
                 amount: paymentAmount,
                 remaining: runningRemaining,
                 month: month,
-                paymentMethod: monthPayment?.paymentMethod || null,
+                paymentMethod: (monthPayment?.paymentMethod as "CASH" | "UPI" | "BANK_TRANSFER" | null) || null,
               },
             });
           }

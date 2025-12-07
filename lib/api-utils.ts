@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { verifyToken } from "@/lib/auth";
+import { verifyToken, type AuthUser } from "@/lib/auth";
 import { z } from "zod";
-
-export interface AuthUser {
-  id: string;
-  userId: string;
-  email: string;
-  role: "ADMIN" | "USER";
-}
 
 /**
  * Authenticate request and return user
