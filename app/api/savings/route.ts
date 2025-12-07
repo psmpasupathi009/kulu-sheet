@@ -148,8 +148,22 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Create transaction
-    const newTotal = savings.totalAmount + data.amount
+    // Recalculate current total from all existing transactions first
+    const allTransactions = await prisma.savingsTransaction.findMany({
+      where: { savingsId: savings.id },
+      orderBy: { date: 'asc' },
+    });
+
+    // Calculate current total from all transactions (only positive amounts)
+    const currentTotal = allTransactions.reduce(
+      (sum, t) => sum + Math.max(0, t.amount || 0),
+      0
+    );
+
+    // New total after adding this transaction
+    const newTotal = currentTotal + data.amount;
+
+    // Create transaction with correct running total
     const transaction = await prisma.savingsTransaction.create({
       data: {
         savingsId: savings.id,

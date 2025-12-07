@@ -109,17 +109,38 @@ export async function POST(
     // Example: 4 members, loan in month 1 → repays 4 months (4 - 1 + 1 = 4)
     // Example: 4 members, loan in month 2 → repays 3 months (4 - 2 + 1 = 3)
     // Example: 4 members, loan in month 4 → repays 1 month (4 - 4 + 1 = 1)
+    // IMPORTANT: All members pay the SAME monthlyAmount (₹2000) regardless of when they get the loan
+    // Monthly payment = group.monthlyAmount (NOT principal/months or remaining/remainingMonths)
     const loanMonth = collection.month; // Month when loan is being disbursed
     const repaymentMonths = group.totalMembers - loanMonth + 1;
     
-    // Check if the member has already paid in the collection month
-    // If they paid ₹2000 in month 1, that counts towards the loan repayment
-    // So remaining loan = total loan - their contribution in that month
-    const memberPayment = collection.payments?.find(
-      (p) => p.memberId === loanMember.memberId && p.status === "PAID"
-    );
+    // Calculate CUMULATIVE contributions from ALL previous months (1 to loanMonth)
+    // Member 1 (month 1): ₹2000 (month 1 only)
+    // Member 2 (month 2): ₹4000 (month 1 + month 2)
+    // Member 3 (month 3): ₹6000 (month 1 + month 2 + month 3)
+    // Member 4 (month 4): ₹8000 (month 1 + month 2 + month 3 + month 4)
+    const allCollections = await prisma.monthlyCollection.findMany({
+      where: {
+        groupId: groupId,
+        month: { lte: loanMonth }, // All months up to and including loan month
+      },
+      include: {
+        payments: {
+          where: {
+            memberId: loanMember.memberId,
+            status: "PAID",
+          },
+        },
+      },
+    });
 
-    const memberContribution = memberPayment?.amount || 0;
+    // Sum all payments made by this member from month 1 to loanMonth
+    const memberContribution = allCollections.reduce((total, coll) => {
+      const memberPayments = coll.payments || [];
+      const monthTotal = memberPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      return total + monthTotal;
+    }, 0);
+
     const remainingLoanAmount = loanAmount - memberContribution;
     
     // Create loan from the pooled collection (no deduction from savings)
@@ -127,38 +148,97 @@ export async function POST(
     const result = await prisma.$transaction(
       async (tx) => {
         // Create loan
-        // If member already paid in the loan month, mark that month as paid (currentMonth = 1)
-        // Otherwise, start from 0
-        const initialCurrentMonth = memberContribution > 0 ? 1 : 0;
+        // Calculate how many months the member has already paid (based on cumulative contributions)
+        // Each month = ₹2000, so months paid = memberContribution / monthlyAmount
+        const monthsAlreadyPaid = Math.floor(memberContribution / group.monthlyAmount);
+        const initialCurrentMonth = Math.min(monthsAlreadyPaid, repaymentMonths);
+        
+        // Check if loan is already complete (member paid all required months)
+        const isLoanComplete = remainingLoanAmount <= 0.01 || initialCurrentMonth >= repaymentMonths;
+        const initialStatus = isLoanComplete ? "COMPLETED" : "ACTIVE";
         
         const loan = await tx.loan.create({
           data: {
             memberId: loanMember.memberId,
             groupId: groupId,
             principal: loanAmount, // Full loan amount received
-            remaining: remainingLoanAmount, // Remaining after deducting their contribution
+            remaining: Math.max(0, remainingLoanAmount), // Remaining after deducting their contribution (never negative)
             months: repaymentMonths, // Total months member must pay (totalMembers - loanMonth + 1)
             loanMonth: loanMonth, // Record which month loan was disbursed
-            currentMonth: initialCurrentMonth, // Start at 1 if they already paid in loan month, else 0
-            status: "ACTIVE",
+            currentMonth: initialCurrentMonth, // Number of payments already made (based on cumulative contributions)
+            status: initialStatus,
             disbursedAt: disbursedDate,
             disbursementMethod: data.disbursementMethod || null,
-            totalPrincipalPaid: memberContribution, // Their contribution counts as first payment
+            totalPrincipalPaid: memberContribution, // Cumulative contributions from months 1 to loanMonth
+            completedAt: isLoanComplete ? disbursedDate : null,
           },
         });
 
-        // If member already paid in the loan month, create a transaction record for it
-        if (memberContribution > 0) {
-          await tx.loanTransaction.create({
-            data: {
-              loanId: loan.id,
-              date: memberPayment?.paymentDate || disbursedDate,
-              amount: memberContribution,
-              remaining: remainingLoanAmount,
-              month: 1, // First month payment
-              paymentMethod: memberPayment?.paymentMethod || null,
-            },
-          });
+        // Create transaction records for all months the member has already paid
+        // If member paid ₹4000 (2 months), create 2 transactions for months 1 and 2
+        // Calculate remaining amounts correctly: start from loanAmount and subtract each payment
+        if (memberContribution > 0 && initialCurrentMonth > 0) {
+          let runningRemaining = loanAmount; // Start from full loan amount
+          for (let month = 1; month <= initialCurrentMonth; month++) {
+            const paymentAmount = group.monthlyAmount;
+            runningRemaining = Math.max(0, runningRemaining - paymentAmount);
+            
+            // Verify: After all transactions, runningRemaining should equal remainingLoanAmount
+            // For Member 2: ₹8000 - ₹2000 (month 1) - ₹2000 (month 2) = ₹4000 ✓
+            
+            // Find the actual payment date from the collection for this month
+            const monthCollection = allCollections.find(c => c.month === month);
+            const monthPayment = monthCollection?.payments?.find(
+              p => p.memberId === loanMember.memberId && p.status === "PAID"
+            );
+            
+            await tx.loanTransaction.create({
+              data: {
+                loanId: loan.id,
+                date: monthPayment?.paymentDate || disbursedDate,
+                amount: paymentAmount,
+                remaining: runningRemaining,
+                month: month,
+                paymentMethod: monthPayment?.paymentMethod || null,
+              },
+            });
+          }
+          
+          // Verify the final remaining matches our calculation
+          if (Math.abs(runningRemaining - remainingLoanAmount) > 0.01) {
+            console.error(`Loan ${loan.id}: Transaction remaining (${runningRemaining}) doesn't match calculated remaining (${remainingLoanAmount}). Updating loan.remaining to match.`);
+            // Update the loan's remaining amount to match the transaction calculation
+            await tx.loan.update({
+              where: { id: loan.id },
+              data: { remaining: runningRemaining },
+            });
+          }
+        }
+        
+        // Final verification: Ensure loan status is correct based on remaining and currentMonth
+        const finalLoan = await tx.loan.findUnique({
+          where: { id: loan.id },
+        });
+        
+        if (finalLoan) {
+          const shouldBeComplete = finalLoan.remaining <= 0.01 || finalLoan.currentMonth >= finalLoan.months;
+          if (shouldBeComplete && finalLoan.status !== "COMPLETED") {
+            await tx.loan.update({
+              where: { id: loan.id },
+              data: {
+                status: "COMPLETED",
+                completedAt: finalLoan.completedAt || disbursedDate,
+              },
+            });
+          } else if (!shouldBeComplete && finalLoan.status === "COMPLETED") {
+            await tx.loan.update({
+              where: { id: loan.id },
+              data: {
+                status: "ACTIVE",
+                completedAt: null,
+              },
+            });
+          }
         }
 
         // Update collection
@@ -198,8 +278,9 @@ export async function POST(
       }
     );
 
+    const monthsPaid = Math.floor(memberContribution / group.monthlyAmount);
     const message = memberContribution > 0
-      ? `Loan of ₹${loanAmount.toFixed(2)} disbursed successfully to ${result.member.name}. Their contribution of ₹${memberContribution.toFixed(2)} in month ${loanMonth} is already counted. Remaining to repay: ₹${remainingLoanAmount.toFixed(2)} over ${repaymentMonths - 1} months.`
+      ? `Loan of ₹${loanAmount.toFixed(2)} disbursed successfully to ${result.member.name}. Their cumulative contribution of ₹${memberContribution.toFixed(2)} (${monthsPaid} months) is already counted. Remaining to repay: ₹${remainingLoanAmount.toFixed(2)} over ${repaymentMonths - monthsPaid} months.`
       : `Loan of ₹${loanAmount.toFixed(2)} disbursed successfully to ${result.member.name}. Remaining to repay: ₹${remainingLoanAmount.toFixed(2)} over ${repaymentMonths} months.`;
 
     return NextResponse.json(

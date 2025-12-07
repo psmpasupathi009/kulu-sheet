@@ -442,12 +442,22 @@ export async function PUT(
 
         if (!existingSavingsTransaction) {
           // Only add to savings if it wasn't already added
-          const newTotal = savings.totalAmount + data.amount;
-          await prisma.savings.update({
-            where: { id: savings.id },
-            data: { totalAmount: newTotal },
+          // Recalculate running total from all existing transactions first
+          const allTransactions = await prisma.savingsTransaction.findMany({
+            where: { savingsId: savings.id },
+            orderBy: { date: "asc" },
           });
 
+          // Calculate current total from all transactions
+          const currentTotal = allTransactions.reduce(
+            (sum, t) => sum + Math.max(0, t.amount || 0),
+            0
+          );
+
+          // New total after adding this payment
+          const newTotal = currentTotal + data.amount;
+
+          // Create the new transaction with correct running total
           await prisma.savingsTransaction.create({
             data: {
               savingsId: savings.id,
@@ -455,6 +465,12 @@ export async function PUT(
               amount: data.amount,
               total: newTotal,
             },
+          });
+
+          // Update savings total
+          await prisma.savings.update({
+            where: { id: savings.id },
+            data: { totalAmount: newTotal },
           });
         }
       }

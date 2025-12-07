@@ -189,20 +189,21 @@ export async function DELETE(
                 orderBy: { date: 'asc' },
               });
 
-              // Recalculate running totals
+              // Recalculate running totals from remaining transactions
+              // Only count positive amounts (contributions)
               let runningTotal = 0;
               for (const trans of remainingTransactions) {
-                runningTotal += trans.amount;
+                runningTotal += Math.max(0, trans.amount || 0); // Only count positive amounts
                 await tx.savingsTransaction.update({
                   where: { id: trans.id },
                   data: { total: runningTotal },
                 });
               }
 
-              // Update savings total
+              // Update savings total (ensure never negative)
               await tx.savings.update({
                 where: { id: savings.id },
-                data: { totalAmount: runningTotal },
+                data: { totalAmount: Math.max(0, runningTotal) },
               });
             }
           }

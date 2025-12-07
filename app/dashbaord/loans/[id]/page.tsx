@@ -112,13 +112,15 @@ export default function LoanDetailPage() {
     paymentMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
   });
 
-  // Calculate monthly payment: remaining balance / remaining months
-  // This ensures that if someone paid some months before receiving the loan,
-  // they only pay the remaining amount divided by remaining months
+  // Calculate monthly payment based on group's monthly investment amount
+  // This is the fixed amount each member pays per month (e.g., ₹2000)
+  // NOT based on loan principal or remaining balance
   const monthlyPayment = loan 
-    ? (loan.months - loan.currentMonth > 0 
-        ? loan.remaining / (loan.months - loan.currentMonth)
-        : loan.remaining)
+    ? (loan.group?.monthlyAmount 
+        ? Math.min(loan.group.monthlyAmount, loan.remaining)
+        : (loan.months > 0 
+            ? Math.min(loan.principal / loan.months, loan.remaining)
+            : loan.remaining))
     : 0;
 
   useEffect(() => {
@@ -241,11 +243,16 @@ export default function LoanDetailPage() {
     }
   };
 
-  // Calculate monthly payment based on remaining balance and remaining months
+  // Calculate monthly payment based on group's monthly investment amount
+  // This is the fixed amount each member pays per month (e.g., ₹2000)
   const remainingMonthsForSchedule = loan ? loan.months - loan.currentMonth : loan?.months || 0;
-  const monthlyPaymentForSchedule = loan && remainingMonthsForSchedule > 0
-    ? loan.remaining / remainingMonthsForSchedule
-    : loan?.remaining || 0;
+  const monthlyPaymentForSchedule = loan 
+    ? (loan.group?.monthlyAmount 
+        ? Math.min(loan.group.monthlyAmount, loan.remaining)
+        : (loan.months > 0 
+            ? Math.min(loan.principal / loan.months, loan.remaining)
+            : loan.remaining))
+    : 0;
 
   const paymentSchedule = loan
     ? generatePaymentSchedule(
