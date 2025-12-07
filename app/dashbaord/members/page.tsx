@@ -112,8 +112,7 @@ export default function MembersPage() {
           {user?.role === "ADMIN" && (
             <p className="text-sm text-muted-foreground">
               As admin, you have full control to view, edit, and delete members.
-              You can also join groups as a member to receive loans. All changes
-              are permanent.
+              All changes are permanent.
             </p>
           )}
         </CardHeader>

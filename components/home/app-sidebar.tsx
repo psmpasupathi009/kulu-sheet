@@ -27,7 +27,6 @@ import {
   FileSpreadsheet,
   Settings,
   RotateCcw,
-  Building2,
   User,
 } from "lucide-react";
 
@@ -72,12 +71,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Loan Cycles",
       url: "/dashbaord/cycles",
       icon: RotateCcw,
-      items: [],
-    },
-    {
-      title: "ROSCA Groups",
-      url: "/dashbaord/groups",
-      icon: Building2,
       items: [],
     },
     {

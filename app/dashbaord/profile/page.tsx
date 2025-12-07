@@ -49,7 +49,6 @@ interface MemberProfile {
     totalInterestReceived: number;
     activeLoansCount: number;
     completedLoansCount: number;
-    groupsCount: number;
   };
   savings: Array<{
     id: string;
@@ -74,10 +73,6 @@ interface MemberProfile {
     completedAt: string | null;
     cycle: {
       cycleNumber: number;
-      group: {
-        id: string;
-        name: string;
-      } | null;
     } | null;
     interestDistributions: Array<{
       id: string;
@@ -85,46 +80,19 @@ interface MemberProfile {
       distributionDate: string;
     }>;
   }>;
-  groups: Array<{
-    id: string;
-    group: {
-      id: string;
-      name: string;
-    };
-    joiningWeek: number;
     joiningDate: string;
-    weeklyAmount: number;
-    totalContributed: number;
-    totalReceived: number;
-    benefitAmount: number;
-    totalInterestReceived: number;
-    collections: Array<{
+    interestDistributions: Array<{
       id: string;
       amount: number;
-      paymentDate: string;
-      collection: {
-        week: number;
+      distributionDate: string;
+      loan: {
+        id: string;
+        principal: number;
         cycle: {
           cycleNumber: number;
-        };
+        } | null;
       };
     }>;
-  }>;
-  interestDistributions: Array<{
-    id: string;
-    amount: number;
-    distributionDate: string;
-    loan: {
-      id: string;
-      principal: number;
-      cycle: {
-        group: {
-          id: string;
-          name: string;
-        } | null;
-      } | null;
-    };
-  }>;
 }
 
 export default function ProfilePage() {
@@ -132,11 +100,6 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<"all" | "week" | "group" | "loan">(
-    "all"
-  );
-  const [selectedGroup, setSelectedGroup] = useState<string>("all");
-  const [selectedLoan, setSelectedLoan] = useState<string>("all");
 
   useEffect(() => {
     fetchProfile();
@@ -178,27 +141,8 @@ export default function ProfilePage() {
     return <div className="p-6">Profile not found</div>;
   }
 
-  // Filter loans based on selection
-  const filteredLoans = profile.loans.filter((loan) => {
-    if (filter === "group" && selectedGroup !== "all") {
-      return loan.cycle?.group?.id === selectedGroup;
-    }
-    if (filter === "loan" && selectedLoan !== "all") {
-      return loan.id === selectedLoan;
-    }
-    return true;
-  });
-
-  // Filter interest distributions
-  const filteredInterest = profile.interestDistributions.filter((dist) => {
-    if (filter === "group" && selectedGroup !== "all") {
-      return dist.loan.cycle?.group?.id === selectedGroup;
-    }
-    if (filter === "loan" && selectedLoan !== "all") {
-      return dist.loan.id === selectedLoan;
-    }
-    return true;
-  });
+  const filteredLoans = profile.loans;
+  const filteredInterest = profile.interestDistributions;
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -206,7 +150,7 @@ export default function ProfilePage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">My Profile</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            View your savings, loans, groups, and interest details
+            View your savings, loans, and interest details
           </p>
         </div>
       </div>
@@ -300,112 +244,15 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Groups */}
-      <Card>
-        <CardHeader>
-          <CardTitle>My Groups</CardTitle>
-          <CardDescription>Groups you are a member of</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {profile.groups.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">
-              You are not a member of any groups yet.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {profile.groups.map((gm) => (
-                <Card key={gm.id} className="border">
-                  <CardHeader>
-                    <CardTitle className="text-lg">{gm.group.name}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Joined</p>
-                        <p className="font-medium">
-                          Week {gm.joiningWeek} (
-                          {format(new Date(gm.joiningDate), "dd/MM/yyyy")})
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Weekly Amount
-                        </p>
-                        <p className="font-medium">
-                          ₹{gm.weeklyAmount.toFixed(2)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Total Contributed
-                        </p>
-                        <p className="font-medium">
-                          ₹{gm.totalContributed.toFixed(2)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Interest Received
-                        </p>
-                        <p className="font-medium text-green-600">
-                          ₹{gm.totalInterestReceived.toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Loans with Filters */}
+      {/* Loans */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle>My Loans</CardTitle>
               <CardDescription>
-                View your loans by group or individual loan
+                View your loans
               </CardDescription>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as any)}
-                className="flex h-10 w-full sm:w-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm">
-                <option value="all">All</option>
-                <option value="group">By Group</option>
-                <option value="loan">By Loan</option>
-              </select>
-              {filter === "group" && (
-                <select
-                  value={selectedGroup}
-                  onChange={(e) => setSelectedGroup(e.target.value)}
-                  className="flex h-10 w-full sm:w-[150px] rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  <option value="all">All Groups</option>
-                  {profile.groups.map((gm) => (
-                    <option key={gm.group.id} value={gm.group.id}>
-                      {gm.group.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {filter === "loan" && (
-                <select
-                  value={selectedLoan}
-                  onChange={(e) => setSelectedLoan(e.target.value)}
-                  className="flex h-10 w-full sm:w-[150px] rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  <option value="all">All Loans</option>
-                  {profile.loans.map((loan) => (
-                    <option key={loan.id} value={loan.id}>
-                      ₹{loan.principal.toFixed(2)} -{" "}
-                      {loan.cycle?.group?.name || "No Group"}
-                    </option>
-                  ))}
-                </select>
-              )}
             </div>
           </div>
         </CardHeader>
@@ -420,7 +267,7 @@ export default function ProfilePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Loan Amount</TableHead>
-                    <TableHead>Group</TableHead>
+                    <TableHead>Cycle</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Remaining</TableHead>
                     <TableHead>Progress</TableHead>
@@ -434,7 +281,7 @@ export default function ProfilePage() {
                       <TableCell className="font-medium">
                         ₹{loan.principal.toFixed(2)}
                       </TableCell>
-                      <TableCell>{loan.cycle?.group?.name || "-"}</TableCell>
+                      <TableCell>Cycle {loan.cycle?.cycleNumber || "-"}</TableCell>
                       <TableCell>
                         <span
                           className={`px-2 py-1 text-xs rounded ${
@@ -486,7 +333,7 @@ export default function ProfilePage() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Loan Amount</TableHead>
-                    <TableHead>Group</TableHead>
+                    <TableHead>Cycle</TableHead>
                     <TableHead>Interest Received</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -498,7 +345,7 @@ export default function ProfilePage() {
                       </TableCell>
                       <TableCell>₹{dist.loan.principal.toFixed(2)}</TableCell>
                       <TableCell>
-                        {dist.loan.cycle?.group?.name || "-"}
+                        {dist.loan.cycle ? `Cycle ${dist.loan.cycle.cycleNumber}` : "-"}
                       </TableCell>
                       <TableCell className="font-semibold text-green-600">
                         ₹{dist.amount.toFixed(2)}

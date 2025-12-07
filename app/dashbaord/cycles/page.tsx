@@ -308,16 +308,24 @@ export default function CyclesPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Loan Cycles</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Manage monthly investment cycles where members invest monthly and receive loans in rotation
+            Give loans to members from the savings pool
           </p>
         </div>
         {user?.role === "ADMIN" && (
-          <Button asChild className="w-full sm:w-auto">
-            <Link href="/dashbaord/cycles/new">
-              <Plus className="mr-2 h-4 w-4" />
-              New Cycle
-            </Link>
-          </Button>
+          <div className="flex gap-3">
+            <Button asChild className="w-full sm:w-auto">
+              <Link href="/dashbaord/loans/give">
+                <Plus className="mr-2 h-4 w-4" />
+                Give Loan
+              </Link>
+            </Button>
+            <Button variant="outline" asChild className="w-full sm:w-auto">
+              <Link href="/dashbaord/cycles/new">
+                <Plus className="mr-2 h-4 w-4" />
+                New Cycle
+              </Link>
+            </Button>
+          </div>
         )}
       </div>
 

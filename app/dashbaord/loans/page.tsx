@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { useAuth } from '@/hooks/use-auth'
+import { Plus } from 'lucide-react'
 
 interface Loan {
   id: string
@@ -24,6 +26,7 @@ interface Loan {
 }
 
 export default function LoansPage() {
+  const { user } = useAuth()
   const [loans, setLoans] = useState<Loan[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -51,9 +54,19 @@ export default function LoansPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold">Loan Details</h1>
-        <p className="text-sm sm:text-base text-muted-foreground mt-1">View and manage loans</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">Loan Details</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">View and manage loans</p>
+        </div>
+        {user?.role === "ADMIN" && (
+          <Button asChild>
+            <Link href="/dashbaord/loans/give">
+              <Plus className="mr-2 h-4 w-4" />
+              Give Loan
+            </Link>
+          </Button>
+        )}
       </div>
 
       <Card>

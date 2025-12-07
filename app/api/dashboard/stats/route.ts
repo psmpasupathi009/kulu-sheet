@@ -17,11 +17,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's member record if exists
-    const member = await prisma.member.findUnique({
-      where: { userId: user.userId },
-    });
-
     if (user.role === "ADMIN") {
       // Admin view: Get all statistics
       const [
@@ -75,6 +70,14 @@ export async function GET(request: NextRequest) {
       );
     } else {
       // Regular user view: Get only their own statistics
+      // Get user's member record if userId exists
+      let member = null;
+      if (user.userId) {
+        member = await prisma.member.findUnique({
+          where: { userId: user.userId },
+        });
+      }
+
       if (!member) {
         return NextResponse.json(
           {

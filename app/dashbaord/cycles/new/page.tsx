@@ -161,7 +161,14 @@ export default function NewCyclePage() {
             Create New Loan Cycle
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Set up a monthly rotation cycle where members invest monthly and receive loans in rotation
+            Set up a monthly rotation cycle where members invest monthly and receive loans in rotation.
+            <span className="block mt-1 text-xs">
+              💡 Need to give a loan to just one member? Use{" "}
+              <Link href="/dashbaord/loans/give" className="text-primary underline">
+                Give Loan
+              </Link>{" "}
+              instead.
+            </span>
           </p>
         </div>
       </div>
@@ -171,9 +178,16 @@ export default function NewCyclePage() {
         <CardHeader>
           <CardTitle>Cycle Configuration</CardTitle>
           <CardDescription>
-            Select members who will participate in this cycle. Each member will invest monthly, 
-            and the pooled amount will be given as a loan to one member each month in rotation. 
+            <strong>For rotating loans:</strong> Select multiple members who will participate in this cycle. 
+            Each member will invest monthly, and the pooled amount will be given as a loan to one member each month in rotation. 
             Each loan must be repaid within 10 months without interest or penalties.
+            <br />
+            <br />
+            <strong>For a single loan:</strong> Use the{" "}
+            <Link href="/dashbaord/loans/give" className="text-primary underline font-medium">
+              Give Loan
+            </Link>{" "}
+            feature instead.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">

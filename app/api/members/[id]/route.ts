@@ -110,6 +110,20 @@ export async function PUT(
     const body = await request.json();
     const data = updateMemberSchema.parse(body);
 
+    // Check if accountNumber is being updated and already exists
+    if (data.accountNumber !== undefined && data.accountNumber !== null && data.accountNumber.trim() !== "") {
+      const existingMember = await prisma.member.findUnique({
+        where: { accountNumber: data.accountNumber.trim() },
+      });
+
+      if (existingMember && existingMember.id !== id) {
+        return NextResponse.json(
+          { error: "Account number already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Get the member first to find the associated user
     const member = await prisma.member.findUnique({
       where: { id },
@@ -119,10 +133,22 @@ export async function PUT(
       return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
-    // Remove undefined values
-    const updateData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== undefined)
-    );
+    // Prepare update data - handle accountNumber specially
+    const updateData: any = {};
+    if (data.userId !== undefined) updateData.userId = data.userId;
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.fatherName !== undefined) updateData.fatherName = data.fatherName;
+    if (data.address1 !== undefined) updateData.address1 = data.address1;
+    if (data.address2 !== undefined) updateData.address2 = data.address2;
+    if (data.accountNumber !== undefined) {
+      updateData.accountNumber = data.accountNumber && data.accountNumber.trim() !== ""
+        ? data.accountNumber.trim()
+        : null;
+    }
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.photo !== undefined) updateData.photo = data.photo;
+    if (data.ifscCode !== undefined) updateData.ifscCode = data.ifscCode;
+    if (data.upiId !== undefined) updateData.upiId = data.upiId;
 
     // Update member and sync user data in a transaction
     const result = await prisma.$transaction(async (tx) => {
@@ -173,6 +199,52 @@ export async function PUT(
         { error: "Invalid input", details: error.errors },
         { status: 400 }
       );
+    }
+
+    // Handle Prisma unique constraint errors
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "P2002") {
+        const meta = error.meta as { target?: string[] } | undefined;
+        if (meta?.target?.includes("accountNumber")) {
+          return NextResponse.json(
+            { error: "Account number already exists" },
+            { status: 400 }
+          );
+        }
+        if (meta?.target?.includes("userId")) {
+          return NextResponse.json(
+            { error: "User ID already exists" },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { error: "A record with this information already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Handle Prisma unique constraint errors
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "P2002") {
+        const meta = error.meta as { target?: string[] } | undefined;
+        if (meta?.target?.includes("accountNumber")) {
+          return NextResponse.json(
+            { error: "Account number already exists" },
+            { status: 400 }
+          );
+        }
+        if (meta?.target?.includes("userId")) {
+          return NextResponse.json(
+            { error: "User ID already exists" },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { error: "A record with this information already exists" },
+          { status: 400 }
+        );
+      }
     }
 
     console.error("Error updating member:", error);

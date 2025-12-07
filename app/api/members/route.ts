@@ -94,9 +94,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if accountNumber is provided and already exists
+    if (data.accountNumber && data.accountNumber.trim() !== "") {
+      const existingAccountNumber = await prisma.member.findUnique({
+        where: { accountNumber: data.accountNumber.trim() },
+      });
+
+      if (existingAccountNumber) {
+        return NextResponse.json(
+          { error: "Account number already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Create member and user in a transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Create the member
+      // Create the member - only set accountNumber if provided and not empty
       const member = await tx.member.create({
         data: {
           userId: data.userId,
@@ -104,7 +118,9 @@ export async function POST(request: NextRequest) {
           fatherName: data.fatherName,
           address1: data.address1,
           address2: data.address2,
-          accountNumber: data.accountNumber,
+          accountNumber: data.accountNumber && data.accountNumber.trim() !== "" 
+            ? data.accountNumber.trim() 
+            : null,
           phone: data.phone,
           photo: data.photo,
           ifscCode: data.ifscCode,
@@ -133,6 +149,29 @@ export async function POST(request: NextRequest) {
         { error: "Invalid input", details: error.errors },
         { status: 400 }
       );
+    }
+
+    // Handle Prisma unique constraint errors
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "P2002") {
+        const meta = error.meta as { target?: string[] } | undefined;
+        if (meta?.target?.includes("accountNumber")) {
+          return NextResponse.json(
+            { error: "Account number already exists" },
+            { status: 400 }
+          );
+        }
+        if (meta?.target?.includes("userId")) {
+          return NextResponse.json(
+            { error: "User ID already exists" },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { error: "A record with this information already exists" },
+          { status: 400 }
+        );
+      }
     }
 
     console.error("Error creating member:", error);
