@@ -61,9 +61,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Simple monthly payment: principal / months (no interest, no penalties)
-    const monthlyPayment = loan.principal / loan.months;
-    
     // Check if loan is already completed
     if (loan.currentMonth >= loan.months) {
       return NextResponse.json(
@@ -71,6 +68,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Calculate remaining months to pay
+    const remainingMonths = loan.months - loan.currentMonth;
+    
+    // Calculate monthly payment: remaining balance / remaining months
+    // This ensures that if someone paid some months before receiving the loan,
+    // they only pay the remaining amount divided by remaining months
+    const monthlyPayment = remainingMonths > 0 
+      ? loan.remaining / remainingMonths 
+      : loan.remaining;
 
     // Calculate next month to pay
     const nextMonth = loan.currentMonth + 1;
@@ -92,6 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate payment amount (one month's payment)
+    // Use the calculated monthly payment, but don't exceed remaining balance
     const principalPayment = Math.min(monthlyPayment, loan.remaining);
 
     // Check if payment exceeds remaining
@@ -106,6 +114,7 @@ export async function POST(request: NextRequest) {
     const newRemaining = Math.max(0, loan.remaining - principalPayment);
     const newCurrentMonth = loan.currentMonth + 1;
     const newTotalPrincipalPaid = loan.totalPrincipalPaid + principalPayment;
+    const newRemainingMonths = loan.months - newCurrentMonth;
 
     // Check if loan is complete (all months paid)
     const isComplete = newCurrentMonth >= loan.months || newRemaining <= 0.01;
@@ -151,7 +160,7 @@ export async function POST(request: NextRequest) {
         loan: result.loan,
         message: newStatus === "COMPLETED" 
           ? `Loan fully repaid! All ${loan.months} months completed.` 
-          : `Monthly payment of ₹${principalPayment.toFixed(2)} recorded. Progress: ${newCurrentMonth}/${loan.months} months`,
+          : `Monthly payment of ₹${principalPayment.toFixed(2)} recorded. Progress: ${newCurrentMonth}/${loan.months} months. Remaining: ₹${newRemaining.toFixed(2)} over ${newRemainingMonths} month(s).`,
       },
       { status: 200 }
     );

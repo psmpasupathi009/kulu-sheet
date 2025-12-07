@@ -111,8 +111,14 @@ export default function LoanDetailPage() {
     paymentMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
   });
 
-  // Simple monthly payment calculation: principal / months (no interest, no penalties)
-  const monthlyPayment = loan ? loan.principal / loan.months : 0;
+  // Calculate monthly payment: remaining balance / remaining months
+  // This ensures that if someone paid some months before receiving the loan,
+  // they only pay the remaining amount divided by remaining months
+  const monthlyPayment = loan 
+    ? (loan.months - loan.currentMonth > 0 
+        ? loan.remaining / (loan.months - loan.currentMonth)
+        : loan.remaining)
+    : 0;
 
   useEffect(() => {
     if (params.id) {
@@ -212,12 +218,18 @@ export default function LoanDetailPage() {
     }
   };
 
+  // Calculate monthly payment based on remaining balance and remaining months
+  const remainingMonthsForSchedule = loan ? loan.months - loan.currentMonth : loan?.months || 0;
+  const monthlyPaymentForSchedule = loan && remainingMonthsForSchedule > 0
+    ? loan.remaining / remainingMonthsForSchedule
+    : loan?.remaining || 0;
+
   const paymentSchedule = loan
     ? generatePaymentSchedule(
-        loan.principal,
-        loan.principal / loan.months, // Monthly principal payment
+        loan.remaining, // Use remaining balance, not principal
+        monthlyPaymentForSchedule, // Monthly payment based on remaining
         0, // No interest
-        loan.months,
+        remainingMonthsForSchedule, // Remaining months
         "DECLINING" // Not used but required by function
       )
     : [];
