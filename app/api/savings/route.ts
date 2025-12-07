@@ -62,9 +62,13 @@ export async function GET(request: NextRequest) {
           });
         }
         
+        // Filter out negative transactions (from old loan disbursement logic)
+        const positiveTransactions = saving.transactions.filter(t => t.amount > 0);
+        
         return { 
           ...saving, 
           totalAmount: finalTotal,
+          transactions: positiveTransactions, // Only return positive transactions
           member: saving.member,
         };
       })

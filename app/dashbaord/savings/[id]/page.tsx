@@ -89,21 +89,23 @@ export default function SavingsDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {savings.transactions.length === 0 ? (
+              {savings.transactions.filter(t => t.amount > 0).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No transactions found
                   </TableCell>
                 </TableRow>
               ) : (
-                savings.transactions.map((transaction, index) => (
-                  <TableRow key={transaction.id}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{format(new Date(transaction.date), 'dd/MM/yyyy')}</TableCell>
-                    <TableCell>₹{transaction.amount.toFixed(2)}</TableCell>
-                    <TableCell>₹{transaction.total.toFixed(2)}</TableCell>
-                  </TableRow>
-                ))
+                savings.transactions
+                  .filter(t => t.amount > 0) // Only show positive transactions (contributions)
+                  .map((transaction, index) => (
+                    <TableRow key={transaction.id}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>{format(new Date(transaction.date), 'dd/MM/yyyy')}</TableCell>
+                      <TableCell>₹{transaction.amount.toFixed(2)}</TableCell>
+                      <TableCell>₹{transaction.total.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))
               )}
             </TableBody>
           </Table>

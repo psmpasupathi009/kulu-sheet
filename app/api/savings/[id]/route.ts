@@ -51,11 +51,15 @@ export async function GET(
       });
     }
 
-    // Return with recalculated total and transactions ordered by date desc for display
+    // Filter out negative transactions (from old loan disbursement logic)
+    // Only show positive transactions (contributions)
+    const positiveTransactions = savings.transactions.filter(t => t.amount > 0);
+
+    // Return with recalculated total and only positive transactions ordered by date desc for display
     const savingsWithCorrectTotal = {
       ...savings,
       totalAmount: finalTotal,
-      transactions: [...savings.transactions].sort((a, b) => 
+      transactions: positiveTransactions.sort((a, b) => 
         new Date(b.date).getTime() - new Date(a.date).getTime()
       ),
     };
