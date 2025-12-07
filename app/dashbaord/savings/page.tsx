@@ -6,7 +6,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
-import { Plus } from 'lucide-react'
+import { Plus, Edit, Trash2 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
 
 interface Savings {
   id: string
@@ -38,6 +50,23 @@ export default function SavingsPage() {
       console.error('Error fetching savings:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDelete = async (savingId: string, memberName: string) => {
+    try {
+      const response = await fetch(`/api/savings/${savingId}`, {
+        method: 'DELETE',
+      })
+      if (response.ok) {
+        toast.success(`Savings record for ${memberName} deleted successfully`)
+        fetchSavings() // Refresh the list
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Failed to delete savings record')
+      }
+    } catch (error) {
+      toast.error('Failed to delete savings record')
     }
   }
 
@@ -76,12 +105,13 @@ export default function SavingsPage() {
                 <TableHead>User ID</TableHead>
                 <TableHead className="text-right">Total Savings</TableHead>
                 <TableHead>Actions</TableHead>
+                {user?.role === 'ADMIN' && <TableHead>Admin</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {savings.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={user?.role === 'ADMIN' ? 6 : 5} className="text-center text-muted-foreground">
                     No savings records found
                   </TableCell>
                 </TableRow>
@@ -99,6 +129,52 @@ export default function SavingsPage() {
                         <Link href={`/dashbaord/savings/${saving.id}`}>View Details</Link>
                       </Button>
                     </TableCell>
+                    {user?.role === 'ADMIN' && (
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            className="h-8 px-2">
+                            <Link href={`/dashbaord/savings/${saving.id}`}>
+                              <Edit className="h-3 w-3" />
+                            </Link>
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-8 px-2">
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Savings Record?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete the savings record for <strong>{saving.member.name}</strong>?
+                                  <br />
+                                  <strong>Total Savings:</strong> ₹{Math.max(0, saving.totalAmount).toFixed(2)}
+                                  <br />
+                                  <br />
+                                  This will delete all savings transactions for this member. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(saving.id, saving.member.name)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

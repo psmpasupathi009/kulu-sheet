@@ -24,20 +24,50 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const savings = await prisma.savings.findMany({
-      include: {
-        member: {
-          select: {
-            id: true,
-            name: true,
-            userId: true,
+    // Get savings based on user role
+    let savings;
+    if (user.role === "ADMIN") {
+      // Admin sees all savings
+      savings = await prisma.savings.findMany({
+        include: {
+          member: {
+            select: {
+              id: true,
+              name: true,
+              userId: true,
+            },
+          },
+          transactions: {
+            orderBy: { date: 'asc' }, // Order by date ascending to calculate running total correctly
           },
         },
-        transactions: {
-          orderBy: { date: 'asc' }, // Order by date ascending to calculate running total correctly
+      })
+    } else {
+      // Regular users see only their own savings
+      const member = await prisma.member.findUnique({
+        where: { userId: user.userId || "" },
+      })
+
+      if (!member) {
+        return NextResponse.json({ savings: [] }, { status: 200 })
+      }
+
+      savings = await prisma.savings.findMany({
+        where: { memberId: member.id },
+        include: {
+          member: {
+            select: {
+              id: true,
+              name: true,
+              userId: true,
+            },
+          },
+          transactions: {
+            orderBy: { date: 'asc' }, // Order by date ascending to calculate running total correctly
+          },
         },
-      },
-    })
+      })
+    }
 
     // Recalculate totals from transactions to ensure accuracy
     // Only count positive transactions (contributions) - loans don't deduct from savings

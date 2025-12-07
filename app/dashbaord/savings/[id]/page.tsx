@@ -6,7 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { ArrowLeft, Trash2, Edit } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { format } from 'date-fns'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
@@ -44,6 +47,11 @@ export default function SavingsDetailPage() {
   const { user } = useAuth()
   const [savings, setSavings] = useState<Savings | null>(null)
   const [loading, setLoading] = useState(true)
+  const [editingTransaction, setEditingTransaction] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({
+    date: '',
+    amount: '',
+  })
 
   useEffect(() => {
     if (params.id) {
@@ -62,6 +70,38 @@ export default function SavingsDetailPage() {
       console.error('Error fetching savings:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleEditClick = (transaction: Transaction) => {
+    setEditingTransaction(transaction.id)
+    setEditForm({
+      date: new Date(transaction.date).toISOString().split('T')[0],
+      amount: transaction.amount.toString(),
+    })
+  }
+
+  const handleEditSubmit = async (transactionId: string) => {
+    try {
+      const response = await fetch(`/api/savings/transactions/${transactionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: editForm.date,
+          amount: parseFloat(editForm.amount),
+        }),
+      })
+
+      if (response.ok) {
+        toast.success('Transaction updated successfully')
+        setEditingTransaction(null)
+        fetchSavings(params.id as string)
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Failed to update transaction')
+      }
+    } catch (error) {
+      toast.error('Failed to update transaction')
     }
   }
 
@@ -121,55 +161,111 @@ export default function SavingsDetailPage() {
                       <TableCell>₹{transaction.total.toFixed(2)}</TableCell>
                       {user?.role === 'ADMIN' && (
                         <TableCell>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="h-8 px-2">
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete this savings transaction?
-                                  <br />
-                                  <strong>Date:</strong> {format(new Date(transaction.date), 'dd MMM yyyy')}
-                                  <br />
-                                  <strong>Amount:</strong> ₹{transaction.amount.toFixed(2)}
-                                  <br />
-                                  <br />
-                                  This will recalculate the total savings. This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={async () => {
-                                    try {
-                                      const response = await fetch(
-                                        `/api/savings/transactions/${transaction.id}`,
-                                        { method: 'DELETE' }
-                                      )
-                                      if (response.ok) {
-                                        toast.success('Transaction deleted successfully')
-                                        window.location.reload()
-                                      } else {
-                                        const data = await response.json()
-                                        toast.error(data.error || 'Failed to delete transaction')
+                          <div className="flex gap-2">
+                            <Dialog open={editingTransaction === transaction.id} onOpenChange={(open) => {
+                              if (!open) setEditingTransaction(null)
+                            }}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-2"
+                                  onClick={() => handleEditClick(transaction)}>
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Edit Transaction</DialogTitle>
+                                  <DialogDescription>
+                                    Update the transaction details. All subsequent totals will be recalculated.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <FieldGroup>
+                                  <Field>
+                                    <FieldLabel>Date</FieldLabel>
+                                    <Input
+                                      type="date"
+                                      value={editForm.date}
+                                      onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                                    />
+                                  </Field>
+                                  <Field>
+                                    <FieldLabel>Amount</FieldLabel>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={editForm.amount}
+                                      onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                                      placeholder="2000"
+                                    />
+                                    <FieldDescription>Enter the transaction amount</FieldDescription>
+                                  </Field>
+                                </FieldGroup>
+                                <DialogFooter>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => setEditingTransaction(null)}>
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleEditSubmit(transaction.id)}
+                                    disabled={!editForm.date || !editForm.amount || parseFloat(editForm.amount) <= 0}>
+                                    Save Changes
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-8 px-2">
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this savings transaction?
+                                    <br />
+                                    <strong>Date:</strong> {format(new Date(transaction.date), 'dd MMM yyyy')}
+                                    <br />
+                                    <strong>Amount:</strong> ₹{transaction.amount.toFixed(2)}
+                                    <br />
+                                    <br />
+                                    This will recalculate the total savings. This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={async () => {
+                                      try {
+                                        const response = await fetch(
+                                          `/api/savings/transactions/${transaction.id}`,
+                                          { method: 'DELETE' }
+                                        )
+                                        if (response.ok) {
+                                          toast.success('Transaction deleted successfully')
+                                          fetchSavings(params.id as string)
+                                        } else {
+                                          const data = await response.json()
+                                          toast.error(data.error || 'Failed to delete transaction')
+                                        }
+                                      } catch (error) {
+                                        toast.error('Failed to delete transaction')
                                       }
-                                    } catch (error) {
-                                      toast.error('Failed to delete transaction')
-                                    }
-                                  }}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                                    }}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </TableCell>
                       )}
                     </TableRow>
