@@ -39,7 +39,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { format } from "date-fns";
+import { format, addMonths } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { generatePaymentSchedule } from "@/lib/utils";
 
@@ -125,6 +125,19 @@ export default function LoanDetailPage() {
       fetchLoan(params.id as string);
     }
   }, [params.id]);
+
+  // Auto-select payment date based on loan disbursement date and next payment month
+  useEffect(() => {
+    if (loan && loan.disbursedAt && !showPaymentForm) {
+      // Calculate next payment date: disbursement date + currentMonth months
+      const disbursedDate = new Date(loan.disbursedAt);
+      const nextPaymentDate = addMonths(disbursedDate, loan.currentMonth);
+      setPaymentForm({
+        ...paymentForm,
+        paymentDate: format(nextPaymentDate, 'yyyy-MM-dd'),
+      });
+    }
+  }, [loan, showPaymentForm]);
 
   const fetchLoan = async (id: string) => {
     try {
@@ -426,6 +439,16 @@ export default function LoanDetailPage() {
                               Month {loan.currentMonth + 1} of {loan.months}
                             </span>
                           </div>
+                          {loan.disbursedAt && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">
+                                Due Date:
+                              </span>
+                              <span className="font-medium">
+                                {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth), 'dd MMM yyyy')}
+                              </span>
+                            </div>
+                          )}
                           {loan.transactions.some(t => t.month === loan.currentMonth + 1) && (
                             <div className="text-xs text-red-600 dark:text-red-400 font-medium">
                               ⚠️ This month is already paid! Cannot pay again.
@@ -455,6 +478,14 @@ export default function LoanDetailPage() {
                               ₹{loan.remaining.toFixed(2)}
                             </span>
                           </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              Loan Duration:
+                            </span>
+                            <span className="font-medium">
+                              {loan.months} months (based on {loan.group?.totalMembers || loan.months} members)
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <Field>
@@ -477,6 +508,11 @@ export default function LoanDetailPage() {
                         <FieldLabel htmlFor="paymentDate">
                           <Calendar className="mr-2 h-4 w-4 inline" />
                           Payment Date
+                          {loan.disbursedAt && (
+                            <span className="ml-2 text-xs text-blue-600 dark:text-blue-400 font-normal">
+                              (Auto-selected: {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth), 'dd MMM yyyy')})
+                            </span>
+                          )}
                         </FieldLabel>
                         <Input
                           id="paymentDate"
@@ -489,6 +525,11 @@ export default function LoanDetailPage() {
                             })
                           }
                         />
+                        {loan.disbursedAt && (
+                          <FieldDescription>
+                            Due date for Month {loan.currentMonth + 1}: {format(addMonths(new Date(loan.disbursedAt), loan.currentMonth), 'dd MMMM yyyy')}
+                          </FieldDescription>
+                        )}
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="paymentMethod">
@@ -579,6 +620,7 @@ export default function LoanDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Month</TableHead>
+                    <TableHead>Due Date</TableHead>
                     <TableHead>Principal Remaining</TableHead>
                     <TableHead>Principal Payment</TableHead>
                     <TableHead>Total Payment</TableHead>
@@ -590,6 +632,10 @@ export default function LoanDetailPage() {
                     const isPaid = loan.transactions.some(
                       (t) => t.month === schedule.month
                     );
+                    // Calculate due date: disbursement date + (month - 1) months
+                    const dueDate = loan.disbursedAt 
+                      ? addMonths(new Date(loan.disbursedAt), schedule.month - 1)
+                      : null;
                     return (
                       <TableRow
                         key={schedule.month}
@@ -597,9 +643,21 @@ export default function LoanDetailPage() {
                           isPaid ? "bg-green-50 dark:bg-green-900/20" : ""
                         }>
                         <TableCell className="font-medium">
-                          {schedule.month}
+                          Month {schedule.month}
                           {isPaid && (
                             <CheckCircle2 className="ml-2 h-4 w-4 inline text-green-600" />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {dueDate ? (
+                            <div>
+                              <div className="font-medium">{format(dueDate, 'dd MMM yyyy')}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {format(dueDate, 'EEEE')}
+                              </div>
+                            </div>
+                          ) : (
+                            '-'
                           )}
                         </TableCell>
                         <TableCell>
