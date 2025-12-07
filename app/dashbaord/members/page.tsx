@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
-import { useRouter } from "next/navigation";
 import { Edit, Trash2, Eye } from "lucide-react";
 import {
   AlertDialog,
@@ -43,7 +42,6 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { user } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     fetchMembers();
@@ -172,10 +170,7 @@ export default function MembersPage() {
                                 variant="outline"
                                 size="sm"
                                 asChild
-                                className="text-xs sm:text-sm"
-                                onClick={() =>
-                                  router.push(`/dashbaord/members/${member.id}`)
-                                }>
+                                className="text-xs sm:text-sm">
                                 <Link href={`/dashbaord/members/${member.id}`}>
                                   <Edit className="mr-1 h-3 w-3" />
                                   <span className="hidden sm:inline">Edit</span>

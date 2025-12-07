@@ -361,6 +361,24 @@ export default function LoanDetailPage() {
                       <CardTitle className="text-lg">Record Payment</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      {/* Show paid months */}
+                      {loan.transactions.length > 0 && (
+                        <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+                          <div className="text-sm font-semibold mb-2 text-green-900 dark:text-green-100">
+                            Already Paid Months
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {loan.transactions.map((t) => (
+                              <div
+                                key={t.id}
+                                className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Month {t.month}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
                         <div className="text-sm font-semibold mb-2 text-blue-900 dark:text-blue-100">
                           Payment Details
@@ -374,6 +392,11 @@ export default function LoanDetailPage() {
                               Month {loan.currentMonth + 1} of {loan.months}
                             </span>
                           </div>
+                          {loan.transactions.some(t => t.month === loan.currentMonth + 1) && (
+                            <div className="text-xs text-red-600 dark:text-red-400 font-medium">
+                              ⚠️ This month is already paid! Cannot pay again.
+                            </div>
+                          )}
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">
                               Monthly Payment:
@@ -460,8 +483,12 @@ export default function LoanDetailPage() {
                         <Button
                           className="flex-1"
                           onClick={handleRepay}
-                          disabled={repaying}>
-                          {repaying ? "Processing..." : "Record Payment"}
+                          disabled={repaying || loan.transactions.some(t => t.month === loan.currentMonth + 1)}>
+                          {repaying 
+                            ? "Processing..." 
+                            : loan.transactions.some(t => t.month === loan.currentMonth + 1)
+                            ? "This Month Already Paid"
+                            : "Record Payment"}
                         </Button>
                         <Button
                           variant="outline"

@@ -21,6 +21,8 @@ import {
   Plus,
   CheckCircle2,
   XCircle,
+  Edit,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { format, addMonths } from "date-fns";
@@ -306,6 +308,78 @@ export default function CyclesPage() {
     } catch (err: any) {
       toast.error(err.message || "Failed to give loan");
       setGivingLoan(null);
+    }
+  };
+
+  const handleEditCollection = async (groupId: string, collectionId: string, currentDate: string) => {
+    const newDate = prompt("Enter new collection date (YYYY-MM-DD):", currentDate.split("T")[0]);
+    if (!newDate) return;
+
+    try {
+      const response = await fetch(`/api/financing-groups/${groupId}/collections/${collectionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collectionDate: newDate,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update collection");
+      }
+
+      toast.success("Collection updated successfully!");
+      fetchGroups();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update collection");
+    }
+  };
+
+  const handleDeleteCollection = async (groupId: string, collectionId: string) => {
+    if (!confirm("Are you sure you want to delete this collection? This will also delete all payments recorded for this month.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/financing-groups/${groupId}/collections/${collectionId}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete collection");
+      }
+
+      toast.success("Collection deleted successfully!");
+      fetchGroups();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete collection");
+    }
+  };
+
+  const handleReverseLoan = async (groupId: string, collectionId: string) => {
+    if (!confirm("Are you sure you want to reverse this loan? This will delete the loan and make the collection available for loan disbursement again.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/financing-groups/${groupId}/collections/${collectionId}/reverse-loan`, {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to reverse loan");
+      }
+
+      toast.success(data.message || "Loan reversed successfully!");
+      fetchGroups();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reverse loan");
     }
   };
 
@@ -867,6 +941,7 @@ export default function CyclesPage() {
                             <TableHead>Collected</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Loan</TableHead>
+                            {user?.role === "ADMIN" && <TableHead>Actions</TableHead>}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -895,6 +970,40 @@ export default function CyclesPage() {
                                   <span className="text-xs text-muted-foreground">-</span>
                                 )}
                               </TableCell>
+                              {user?.role === "ADMIN" && (
+                                <TableCell>
+                                  <div className="flex gap-1">
+                                    {!collection.loanDisbursed && (
+                                      <>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleEditCollection(group.id, collection.id, collection.collectionDate)}
+                                          className="h-7 px-2">
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          variant="destructive"
+                                          size="sm"
+                                          onClick={() => handleDeleteCollection(group.id, collection.id)}
+                                          className="h-7 px-2">
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      </>
+                                    )}
+                                    {collection.loanDisbursed && (
+                                      <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={() => handleReverseLoan(group.id, collection.id)}
+                                        className="h-7 px-2 text-xs">
+                                        <Trash2 className="h-3 w-3 mr-1" />
+                                        Reverse
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))}
                         </TableBody>
