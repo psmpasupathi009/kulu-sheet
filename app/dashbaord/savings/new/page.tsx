@@ -100,12 +100,18 @@ export default function NewSavingsPage() {
   }
 
   const selectedGroup = financingGroups.find(g => g.id === selectedGroupId)
+  // Show only months that need payment (not completed or not all members paid, and loan not disbursed)
   const availableMonths = selectedGroup 
     ? Array.from({ length: selectedGroup.totalMembers }, (_, i) => i + 1)
         .filter(month => {
           const collection = selectedGroup.collections.find(c => c.month === month)
-          // Show months that don't have collections, or have incomplete collections that haven't disbursed loans
-          return !collection || (!collection.isCompleted || !collection.loanDisbursed)
+          // Don't show months where loan is already disbursed (month is fully done)
+          if (collection?.loanDisbursed) return false
+          // Show months that:
+          // 1. Don't have a collection yet, OR
+          // 2. Have a collection but it's not completed (not all members paid), OR
+          // 3. Have a collection that's completed but loan not disbursed (can still record if needed)
+          return true
         })
     : []
   
@@ -401,19 +407,28 @@ export default function NewSavingsPage() {
                         Select Month <span className="text-destructive">*</span>
                       </FieldLabel>
                       <select
-                        value={selectedMonth}
+                        value={selectedMonth || 0}
                         onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
                         required={isMonthlyContribution}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                         <option value={0}>Select month</option>
-                        {availableMonths.map((month) => (
-                          <option key={month} value={month}>
-                            {getMonthName(month)}
-                          </option>
-                        ))}
+                        {availableMonths.map((month) => {
+                          const collection = selectedGroup?.collections.find(c => c.month === month)
+                          const isCompleted = collection?.isCompleted
+                          const isDisbursed = collection?.loanDisbursed
+                          return (
+                            <option key={month} value={month}>
+                              {getMonthName(month)}
+                              {isCompleted && !isDisbursed ? " (Completed, loan pending)" : ""}
+                              {isDisbursed ? " (Loan disbursed - not available)" : ""}
+                            </option>
+                          )
+                        })}
                       </select>
                       <FieldDescription>
-                        Select the month for this contribution
+                        {availableMonths.length === 0
+                          ? "All months are completed and loans disbursed. No months available for contribution."
+                          : `Select the month for this contribution. ${availableMonths.length} month(s) available for payment.`}
                       </FieldDescription>
                     </Field>
                   )}
@@ -534,6 +549,11 @@ export default function NewSavingsPage() {
                   <FieldLabel htmlFor="date">
                     <Calendar className="mr-2 h-4 w-4 inline" />
                     Date <span className="text-destructive">*</span>
+                    {isMonthlyContribution && selectedGroup && selectedMonth && (
+                      <span className="ml-2 text-xs text-blue-600 dark:text-blue-400 font-normal">
+                        (Auto-selected based on month)
+                      </span>
+                    )}
                   </FieldLabel>
                   <Input
                     id="date"
@@ -545,7 +565,11 @@ export default function NewSavingsPage() {
                     required
                     className="w-full"
                   />
-                  <FieldDescription>Date of the contribution</FieldDescription>
+                  <FieldDescription>
+                    {isMonthlyContribution && selectedGroup && selectedMonth
+                      ? `Date for ${getMonthName(selectedMonth)} contribution (auto-selected from group start date: ${format(new Date(selectedGroup.startDate), 'dd MMM yyyy')})`
+                      : "Date of the contribution"}
+                  </FieldDescription>
                 </Field>
               </div>
 

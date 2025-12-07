@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { z } from "zod";
+import { format, addMonths } from "date-fns";
 
 const createCollectionSchema = z.object({
   collectionDate: z.string(),
@@ -270,7 +271,7 @@ export async function PUT(
       );
     }
 
-    // Check if payment already exists
+    // Check if payment already exists for this member and month
     const existingPayment = await prisma.collectionPayment.findUnique({
       where: {
         collectionId_memberId: {
@@ -280,10 +281,25 @@ export async function PUT(
       },
     });
 
-    const paymentDate = new Date();
+    // If payment already exists and is PAID, don't allow duplicate
+    if (existingPayment && existingPayment.status === "PAID") {
+      return NextResponse.json(
+        { 
+          error: `This member has already paid for ${format(addMonths(new Date(group.startDate), targetMonth - 1), 'MMMM yyyy')}. Payment date: ${format(new Date(existingPayment.paymentDate), 'dd MMM yyyy')}. Cannot record duplicate payment.`,
+          existingPayment: {
+            date: existingPayment.paymentDate,
+            amount: existingPayment.amount,
+            status: existingPayment.status,
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    const paymentDate = data.collectionDate ? new Date(data.collectionDate) : new Date();
 
     if (existingPayment) {
-      // Update existing payment
+      // Update existing payment (if status was PENDING)
       await prisma.collectionPayment.update({
         where: { id: existingPayment.id },
         data: {

@@ -27,7 +27,18 @@ import {
 } from "@/components/ui/field";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Calendar, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Calendar, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { generatePaymentSchedule } from "@/lib/utils";
@@ -150,7 +161,18 @@ export default function LoanDetailPage() {
         await fetchLoan(loan.id);
       } else {
         const errorData = await response.json();
-        toast.error(errorData.error || "Failed to record payment");
+        // Show detailed error message if payment already exists
+        if (errorData.existingPayment) {
+          toast.error(
+            errorData.error || "Payment already recorded for this month",
+            {
+              description: `Previous payment: ${new Date(errorData.existingPayment.date).toLocaleDateString()} - ₹${errorData.existingPayment.amount?.toFixed(2) || 'N/A'} - Month ${errorData.existingPayment.month}`,
+              duration: 5000,
+            }
+          );
+        } else {
+          toast.error(errorData.error || "Failed to record payment");
+        }
       }
     } catch (error) {
       console.error("Error recording payment:", error);
@@ -618,13 +640,14 @@ export default function LoanDetailPage() {
                   <TableHead>Amount</TableHead>
                   <TableHead>Remaining</TableHead>
                   <TableHead>Month</TableHead>
+                  {user?.role === "ADMIN" && <TableHead>Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loan.transactions.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={user?.role === "ADMIN" ? 6 : 5}
                       className="text-center text-muted-foreground">
                       No transactions found
                     </TableCell>
@@ -639,6 +662,61 @@ export default function LoanDetailPage() {
                       <TableCell>₹{transaction.amount.toFixed(2)}</TableCell>
                       <TableCell>₹{transaction.remaining.toFixed(2)}</TableCell>
                       <TableCell>{transaction.month}</TableCell>
+                      {user?.role === "ADMIN" && (
+                        <TableCell>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-8 px-2">
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Payment?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this payment?
+                                  <br />
+                                  <strong>Date:</strong> {format(new Date(transaction.date), "dd MMM yyyy")}
+                                  <br />
+                                  <strong>Amount:</strong> ₹{transaction.amount.toFixed(2)}
+                                  <br />
+                                  <strong>Month:</strong> {transaction.month}
+                                  <br />
+                                  <br />
+                                  This will recalculate the loan balance and status. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={async () => {
+                                    try {
+                                      const response = await fetch(
+                                        `/api/loans/transactions/${transaction.id}`,
+                                        { method: "DELETE" }
+                                      );
+                                      if (response.ok) {
+                                        toast.success("Payment deleted successfully");
+                                        window.location.reload();
+                                      } else {
+                                        const data = await response.json();
+                                        toast.error(data.error || "Failed to delete payment");
+                                      }
+                                    } catch (error) {
+                                      toast.error("Failed to delete payment");
+                                    }
+                                  }}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

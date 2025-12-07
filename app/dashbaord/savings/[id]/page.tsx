@@ -6,8 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { useAuth } from '@/hooks/use-auth'
+import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 interface Transaction {
   id: string
@@ -28,6 +41,7 @@ interface Savings {
 
 export default function SavingsDetailPage() {
   const params = useParams()
+  const { user } = useAuth()
   const [savings, setSavings] = useState<Savings | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -86,12 +100,13 @@ export default function SavingsDetailPage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Total</TableHead>
+                {user?.role === 'ADMIN' && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {savings.transactions.filter(t => t.amount > 0).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={user?.role === 'ADMIN' ? 5 : 4} className="text-center text-muted-foreground">
                     No transactions found
                   </TableCell>
                 </TableRow>
@@ -104,6 +119,59 @@ export default function SavingsDetailPage() {
                       <TableCell>{format(new Date(transaction.date), 'dd/MM/yyyy')}</TableCell>
                       <TableCell>₹{transaction.amount.toFixed(2)}</TableCell>
                       <TableCell>₹{transaction.total.toFixed(2)}</TableCell>
+                      {user?.role === 'ADMIN' && (
+                        <TableCell>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-8 px-2">
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this savings transaction?
+                                  <br />
+                                  <strong>Date:</strong> {format(new Date(transaction.date), 'dd MMM yyyy')}
+                                  <br />
+                                  <strong>Amount:</strong> ₹{transaction.amount.toFixed(2)}
+                                  <br />
+                                  <br />
+                                  This will recalculate the total savings. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={async () => {
+                                    try {
+                                      const response = await fetch(
+                                        `/api/savings/transactions/${transaction.id}`,
+                                        { method: 'DELETE' }
+                                      )
+                                      if (response.ok) {
+                                        toast.success('Transaction deleted successfully')
+                                        window.location.reload()
+                                      } else {
+                                        const data = await response.json()
+                                        toast.error(data.error || 'Failed to delete transaction')
+                                      }
+                                    } catch (error) {
+                                      toast.error('Failed to delete transaction')
+                                    }
+                                  }}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
               )}

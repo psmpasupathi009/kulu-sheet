@@ -79,7 +79,14 @@ export async function POST(request: NextRequest) {
     const existingPayment = loan.transactions.find(t => t.month === nextMonth);
     if (existingPayment) {
       return NextResponse.json(
-        { error: `Payment for month ${nextMonth} has already been recorded. Please proceed to the next month.` },
+        { 
+          error: `Payment for month ${nextMonth} has already been recorded on ${new Date(existingPayment.date).toLocaleDateString()}. Cannot record duplicate payment.`,
+          existingPayment: {
+            date: existingPayment.date,
+            amount: existingPayment.amount,
+            month: existingPayment.month,
+          }
+        },
         { status: 400 }
       );
     }

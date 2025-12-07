@@ -255,7 +255,20 @@ export default function CyclesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to record payment");
+        // Show detailed error message if member already paid
+        if (data.existingPayment) {
+          toast.error(
+            data.error || "This member has already paid for this month",
+            {
+              description: `Previous payment: ${new Date(data.existingPayment.date).toLocaleDateString()} - ₹${data.existingPayment.amount?.toFixed(2) || 'N/A'}`,
+              duration: 5000,
+            }
+          );
+        } else {
+          toast.error(data.error || "Failed to record payment");
+        }
+        setRecordingPayment(false);
+        return;
       }
 
       toast.success("Payment recorded successfully!");
@@ -705,11 +718,19 @@ export default function CyclesPage() {
                   )}
 
                   {/* Record Payment */}
-                  {currentCollection && !currentCollection.isCompleted && (
+                  {currentCollection && !currentCollection.loanDisbursed && (
                     <div className="border rounded-lg p-4 bg-muted/30">
                       <h3 className="text-sm font-semibold mb-3">
                         Record Payment ({format(addMonths(new Date(group.startDate), currentCollection.month - 1), 'MMMM yyyy')})
                       </h3>
+                      {currentCollection.isCompleted && (
+                        <div className="mb-3 p-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                          <p className="text-xs text-green-800 dark:text-green-200 flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Collection completed. All members have paid. Ready for loan disbursement.
+                          </p>
+                        </div>
+                      )}
                       {showRecordPayment === group.id ? (
                         <form
                           onSubmit={(e) => {
@@ -743,7 +764,41 @@ export default function CyclesPage() {
                                       {gm.member.name} ({gm.member.userId})
                                     </option>
                                   ))}
+                                {group.members.filter(
+                                  (gm) =>
+                                    !(currentCollection.payments || []).some(
+                                      (p) => p.memberId === gm.memberId && p.status === "PAID"
+                                    )
+                                ).length === 0 && (
+                                  <option value="" disabled>All members have paid for this month</option>
+                                )}
                               </select>
+                              {group.members.filter(
+                                (gm) =>
+                                  !(currentCollection.payments || []).some(
+                                    (p) => p.memberId === gm.memberId && p.status === "PAID"
+                                  )
+                              ).length === 0 && (
+                                <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  All members have paid for this month
+                                </p>
+                              )}
+                              {group.members.filter(
+                                (gm) =>
+                                  !(currentCollection.payments || []).some(
+                                    (p) => p.memberId === gm.memberId && p.status === "PAID"
+                                  )
+                              ).length > 0 && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Showing only unpaid members ({group.members.filter(
+                                    (gm) =>
+                                      !(currentCollection.payments || []).some(
+                                        (p) => p.memberId === gm.memberId && p.status === "PAID"
+                                      )
+                                  ).length} remaining)
+                                </p>
+                              )}
               </Field>
               <Field>
                               <FieldLabel>Amount</FieldLabel>
