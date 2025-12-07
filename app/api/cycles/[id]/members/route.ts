@@ -39,6 +39,9 @@ export async function POST(
       where: { id: cycleId },
       include: {
         sequences: {
+          include: {
+            loan: true, // Check if loan was disbursed
+          },
           orderBy: { month: "asc" },
         },
         collections: {
@@ -72,39 +75,63 @@ export async function POST(
       );
     }
 
-    // Calculate catch-up payment
-    const joiningDate = new Date(data.joiningDate);
-    const startDate = new Date(cycle.startDate);
-    const monthsElapsed = Math.max(
-      0,
-      Math.floor(
-        (joiningDate.getTime() - startDate.getTime()) /
-          (30 * 24 * 60 * 60 * 1000)
-      )
-    );
+    // Calculate catch-up payment: monthlyAmount * number of months loans have already been given
+    // Count how many sequences have been disbursed (loans already given)
+    const loansAlreadyGiven = cycle.sequences.filter(
+      (seq) => seq.status === "DISBURSED" || seq.loan !== null
+    ).length;
 
-    const catchUpAmount = monthsElapsed * data.monthlyAmount;
+    // New member pays: monthlyAmount * number of months loans have already been given
+    const catchUpAmount = data.monthlyAmount * loansAlreadyGiven;
     const nextAvailableMonth =
       cycle.sequences.length > 0
         ? Math.max(...cycle.sequences.map((s) => s.month)) + 1
         : cycle.currentMonth + 1;
 
+    // Calculate loan amount for this member (pooled amount = monthlyAmount * totalMembers after adding this member)
+    const newTotalMembers = cycle.totalMembers + 1;
+    const loanAmount = cycle.monthlyAmount * newTotalMembers;
+
     // Create sequence for the member
     const result = await prisma.$transaction(async (tx) => {
-      // Create loan sequence
+      // Update cycle total members
+      await tx.loanCycle.update({
+        where: { id: cycleId },
+        data: {
+          totalMembers: newTotalMembers,
+        },
+      });
+
+      // Update existing PENDING sequences' loan amounts to reflect new total
+      // Since we're adding a member, the pooled amount increases for future loans
+      // Only update sequences that haven't been disbursed yet
+      await Promise.all(
+        cycle.sequences
+          .filter((seq) => seq.status === "PENDING")
+          .map(async (seq) => {
+            await tx.loanSequence.update({
+              where: { id: seq.id },
+              data: {
+                loanAmount: loanAmount, // Update to new pooled amount
+              },
+            });
+          })
+      );
+
+      // Create loan sequence for new member
       const sequence = await tx.loanSequence.create({
         data: {
           cycleId: cycleId,
           memberId: data.memberId,
           month: nextAvailableMonth,
-          loanAmount: 0, // Will be calculated when disbursed
+          loanAmount: loanAmount, // Pooled amount = monthlyAmount * newTotalMembers
           status: "PENDING",
         },
       });
 
       // If catch-up payment is required, create a collection payment record
       if (catchUpAmount > 0 && cycle.collections.length > 0) {
-        // Find or create collection for catch-up
+        // Find or create collection for catch-up (use latest collection)
         const latestCollection = cycle.collections[cycle.collections.length - 1];
         
         // Create catch-up payment record
@@ -113,7 +140,7 @@ export async function POST(
             collectionId: latestCollection.id,
             memberId: data.memberId,
             amount: catchUpAmount,
-            paymentDate: joiningDate,
+            paymentDate: new Date(data.joiningDate),
             paymentMethod: "CASH", // Default, can be updated
             status: "PAID",
           },
@@ -129,18 +156,45 @@ export async function POST(
           },
         });
 
-        // Group fund removed - no longer needed
+        // Add catch-up payment to member's savings
+        let savings = await tx.savings.findFirst({
+          where: { memberId: data.memberId },
+        });
+
+        if (!savings) {
+          savings = await tx.savings.create({
+            data: {
+              memberId: data.memberId,
+              totalAmount: 0,
+            },
+          });
+        }
+
+        const newTotal = savings.totalAmount + catchUpAmount;
+        await tx.savingsTransaction.create({
+          data: {
+            savingsId: savings.id,
+            date: new Date(data.joiningDate),
+            amount: catchUpAmount,
+            total: newTotal,
+          },
+        });
+
+        await tx.savings.update({
+          where: { id: savings.id },
+          data: { totalAmount: newTotal },
+        });
       }
 
-      return { sequence, catchUpAmount, monthsElapsed };
+      return { sequence, catchUpAmount, loansAlreadyGiven };
     });
 
     return NextResponse.json(
       {
         sequence: result.sequence,
         catchUpAmount: result.catchUpAmount,
-        monthsElapsed: result.monthsElapsed,
-        message: "Member added to cycle successfully",
+        loansAlreadyGiven: result.loansAlreadyGiven,
+        message: `Member added to cycle successfully. Catch-up payment: ₹${result.catchUpAmount.toFixed(2)} (${result.loansAlreadyGiven} months × ₹${data.monthlyAmount.toFixed(2)}). Loan amount updated to ₹${loanAmount.toFixed(2)} for all pending members.`,
       },
       { status: 201 }
     );
@@ -159,4 +213,3 @@ export async function POST(
     );
   }
 }
-

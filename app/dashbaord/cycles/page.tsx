@@ -60,6 +60,29 @@ interface LoanSequence {
   } | null;
 }
 
+interface CollectionPayment {
+  id: string;
+  memberId: string;
+  amount: number;
+  paymentDate: string;
+  status: string;
+  member: {
+    name: string;
+    userId: string;
+  };
+}
+
+interface MonthlyCollection {
+  id: string;
+  month: number;
+  collectionDate: string;
+  totalCollected: number;
+  expectedAmount: number;
+  activeMemberCount: number;
+  isCompleted: boolean;
+  payments: CollectionPayment[];
+}
+
 interface LoanCycle {
   id: string;
   cycleNumber: number;
@@ -69,10 +92,7 @@ interface LoanCycle {
   monthlyAmount: number;
   isActive: boolean;
   sequences: LoanSequence[];
-  groupFund?: {
-    investmentPool: number;
-    totalFunds: number;
-  } | null;
+  collections?: MonthlyCollection[];
 }
 
 export default function CyclesPage() {
@@ -111,6 +131,20 @@ export default function CyclesPage() {
     Array<{ id: string; name: string; userId: string }>
   >([]);
   const [addingMember, setAddingMember] = useState(false);
+  const [showCollections, setShowCollections] = useState<string | null>(null);
+  const [showCreateCollection, setShowCreateCollection] = useState<string | null>(null);
+  const [createCollectionForm, setCreateCollectionForm] = useState({
+    month: "",
+    collectionDate: new Date().toISOString().split("T")[0],
+  });
+  const [creatingCollection, setCreatingCollection] = useState(false);
+  const [showRecordPayment, setShowRecordPayment] = useState<{ collectionId: string; cycleId: string } | null>(null);
+  const [recordPaymentForm, setRecordPaymentForm] = useState({
+    memberId: "",
+    amount: "",
+    paymentMethod: "",
+  });
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   useEffect(() => {
     fetchCycles();
@@ -169,7 +203,7 @@ export default function CyclesPage() {
       }
 
       setSuccess(
-        `Member added successfully! Catch-up payment: ₹${data.catchUpAmount.toFixed(2)} (${data.monthsElapsed} months)`
+        `Member added successfully! Catch-up payment: ₹${data.catchUpAmount.toFixed(2)} (${data.loansAlreadyGiven || 0} loans already given × ₹${addMemberForm.monthlyAmount})`
       );
       setShowAddMember(null);
       setAddMemberForm({
@@ -282,7 +316,7 @@ export default function CyclesPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Loan Cycles</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Manage ROSCA loan rotation cycles
+            Manage monthly investment cycles where members invest monthly and receive loans in rotation
           </p>
         </div>
         {user?.role === "ADMIN" && (
@@ -312,7 +346,7 @@ export default function CyclesPage() {
       {cycles.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            No cycles found. Create a new cycle to start the ROSCA rotation.
+            No cycles found. Create a new cycle to start the monthly investment rotation.
           </CardContent>
         </Card>
       ) : (
@@ -353,41 +387,38 @@ export default function CyclesPage() {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm text-muted-foreground">
-                      Weekly Amount
+                      Monthly Amount
                     </p>
                     <p className="font-medium">₹{cycle.monthlyAmount}</p>
                   </div>
                 </div>
-                {cycle.groupFund && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Funds</p>
-                    <p className="font-medium">
-                      ₹{cycle.groupFund.totalFunds.toFixed(2)}
-                    </p>
-                  </div>
-                )}
               </div>
 
-              {cycle.groupFund && (
-                <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-5 p-3 sm:p-4 bg-muted rounded-lg">
+              <div className="p-3 sm:p-4 bg-muted rounded-lg">
+                <p className="text-sm font-medium mb-2">Cycle Information:</p>
+                <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 text-xs">
                   <div>
-                    <p className="text-xs text-muted-foreground">
-                      Investment Pool
-                    </p>
+                    <p className="text-muted-foreground">Pooled Loan Amount</p>
                     <p className="font-medium">
-                      ₹{cycle.groupFund.investmentPool.toFixed(2)}
+                      ₹{(cycle.monthlyAmount * cycle.totalMembers).toFixed(2)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">
-                      Total Funds
-                    </p>
+                    <p className="text-muted-foreground">Current Month</p>
                     <p className="font-medium">
-                      ₹{cycle.groupFund.totalFunds.toFixed(2)}
+                      {cycle.sequences.length > 0 
+                        ? `Month ${Math.max(...cycle.sequences.map(s => s.month))}`
+                        : "Not started"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Loans Disbursed</p>
+                    <p className="font-medium">
+                      {cycle.sequences.filter(s => s.status === "DISBURSED").length} / {cycle.sequences.length}
                     </p>
                   </div>
                 </div>
-              )}
+              </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -494,9 +525,404 @@ export default function CyclesPage() {
                   </Table>
                 </div>
               </div>
+
+              {/* Collections Section */}
+              <div className="mt-6 pt-6 border-t">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold">
+                    Monthly Collections
+                  </h3>
+                  {user?.role === "ADMIN" && cycle.isActive && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowCollections(showCollections === cycle.id ? null : cycle.id);
+                        }}>
+                        {showCollections === cycle.id ? "Hide" : "View"} Collections
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowCreateCollection(cycle.id);
+                          const nextMonth = cycle.collections && cycle.collections.length > 0
+                            ? Math.max(...cycle.collections.map(c => c.month)) + 1
+                            : 1;
+                          setCreateCollectionForm({
+                            month: nextMonth.toString(),
+                            collectionDate: new Date().toISOString().split("T")[0],
+                          });
+                        }}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        New Collection
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {showCollections === cycle.id && cycle.collections && (
+                  <div className="space-y-3">
+                    {cycle.collections.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No collections yet. Create a new collection to start collecting monthly payments.
+                      </p>
+                    ) : (
+                      cycle.collections.map((collection) => (
+                        <Card key={collection.id} className="border">
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <CardTitle className="text-base">
+                                  Month {collection.month} Collection
+                                </CardTitle>
+                                <CardDescription>
+                                  {format(new Date(collection.collectionDate), "dd MMM yyyy")} • 
+                                  {collection.isCompleted ? (
+                                    <span className="text-green-600 ml-1">Completed</span>
+                                  ) : (
+                                    <span className="text-yellow-600 ml-1">In Progress</span>
+                                  )}
+                                </CardDescription>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm text-muted-foreground">Collected</p>
+                                <p className="font-semibold">
+                                  ₹{collection.totalCollected.toFixed(2)} / ₹{collection.expectedAmount.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              {collection.payments.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                  No payments recorded yet.
+                                </p>
+                              ) : (
+                                <div className="space-y-1">
+                                  {collection.payments.map((payment) => (
+                                    <div
+                                      key={payment.id}
+                                      className="flex items-center justify-between p-2 bg-muted rounded text-sm">
+                                      <div>
+                                        <p className="font-medium">{payment.member.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {payment.member.userId}
+                                        </p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="font-medium">₹{payment.amount.toFixed(2)}</p>
+                                        <p
+                                          className={`text-xs ${
+                                            payment.status === "PAID"
+                                              ? "text-green-600"
+                                              : "text-yellow-600"
+                                          }`}>
+                                          {payment.status}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {user?.role === "ADMIN" && !collection.isCompleted && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full mt-2"
+                                  onClick={() => {
+                                    setShowRecordPayment({
+                                      collectionId: collection.id,
+                                      cycleId: cycle.id,
+                                    });
+                                    setRecordPaymentForm({
+                                      memberId: "",
+                                      amount: cycle.monthlyAmount.toString(),
+                                      paymentMethod: "",
+                                    });
+                                  }}>
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Record Payment
+                                </Button>
+                              )}
+                              {collection.isCompleted && (
+                                <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded text-sm text-green-800 dark:text-green-200">
+                                  ✓ Collection complete! Loan has been automatically disbursed.
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))
+      )}
+
+      {/* Create Collection Dialog */}
+      {showCreateCollection && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Create Monthly Collection</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowCreateCollection(null);
+                    setCreateCollectionForm({
+                      month: "",
+                      collectionDate: new Date().toISOString().split("T")[0],
+                    });
+                  }}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel>Month Number <span className="text-destructive">*</span></FieldLabel>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={createCollectionForm.month}
+                    onChange={(e) =>
+                      setCreateCollectionForm({
+                        ...createCollectionForm,
+                        month: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                  <FieldDescription>
+                    Month number in the cycle (1, 2, 3, etc.)
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Collection Date <span className="text-destructive">*</span></FieldLabel>
+                  <Input
+                    type="date"
+                    value={createCollectionForm.collectionDate}
+                    onChange={(e) =>
+                      setCreateCollectionForm({
+                        ...createCollectionForm,
+                        collectionDate: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </Field>
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    onClick={async () => {
+                      if (!createCollectionForm.month || !createCollectionForm.collectionDate) {
+                        setError("Please fill all fields");
+                        return;
+                      }
+                      setCreatingCollection(true);
+                      setError("");
+                      try {
+                        const cycle = cycles.find((c) => c.id === showCreateCollection);
+                        if (!cycle) return;
+
+                        const response = await fetch("/api/collections", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            cycleId: showCreateCollection,
+                            month: parseInt(createCollectionForm.month),
+                            collectionDate: new Date(createCollectionForm.collectionDate).toISOString(),
+                          }),
+                        });
+
+                        const data = await response.json();
+                        if (!response.ok) {
+                          throw new Error(data.error || "Failed to create collection");
+                        }
+
+                        setSuccess("Collection created successfully!");
+                        setShowCreateCollection(null);
+                        setCreateCollectionForm({
+                          month: "",
+                          collectionDate: new Date().toISOString().split("T")[0],
+                        });
+                        fetchCycles();
+                        setTimeout(() => setSuccess(""), 3000);
+                      } catch (err: any) {
+                        setError(err.message || "Failed to create collection");
+                      } finally {
+                        setCreatingCollection(false);
+                      }
+                    }}
+                    disabled={creatingCollection}>
+                    {creatingCollection ? "Creating..." : "Create Collection"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCreateCollection(null);
+                      setCreateCollectionForm({
+                        month: "",
+                        collectionDate: new Date().toISOString().split("T")[0],
+                      });
+                    }}>
+                    Cancel
+                  </Button>
+                </div>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Record Payment Dialog */}
+      {showRecordPayment && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Record Payment</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowRecordPayment(null);
+                    setRecordPaymentForm({
+                      memberId: "",
+                      amount: "",
+                      paymentMethod: "",
+                    });
+                  }}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel>Member <span className="text-destructive">*</span></FieldLabel>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={recordPaymentForm.memberId}
+                    onChange={(e) =>
+                      setRecordPaymentForm({
+                        ...recordPaymentForm,
+                        memberId: e.target.value,
+                      })
+                    }
+                    required>
+                    <option value="">Select a member</option>
+                    {allMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} ({member.userId})
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field>
+                  <FieldLabel>Amount (₹) <span className="text-destructive">*</span></FieldLabel>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={recordPaymentForm.amount}
+                    onChange={(e) =>
+                      setRecordPaymentForm({
+                        ...recordPaymentForm,
+                        amount: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>Payment Method</FieldLabel>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={recordPaymentForm.paymentMethod}
+                    onChange={(e) =>
+                      setRecordPaymentForm({
+                        ...recordPaymentForm,
+                        paymentMethod: e.target.value,
+                      })
+                    }>
+                    <option value="">Select method</option>
+                    <option value="CASH">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                  </select>
+                </Field>
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    onClick={async () => {
+                      if (!recordPaymentForm.memberId || !recordPaymentForm.amount) {
+                        setError("Please fill all required fields");
+                        return;
+                      }
+                      setRecordingPayment(true);
+                      setError("");
+                      try {
+                        const response = await fetch("/api/collections", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            collectionId: showRecordPayment.collectionId,
+                            memberId: recordPaymentForm.memberId,
+                            amount: parseFloat(recordPaymentForm.amount),
+                            paymentMethod: recordPaymentForm.paymentMethod || undefined,
+                          }),
+                        });
+
+                        const data = await response.json();
+                        if (!response.ok) {
+                          throw new Error(data.error || "Failed to record payment");
+                        }
+
+                        setSuccess("Payment recorded successfully! Loan will be automatically disbursed when collection is complete.");
+                        setShowRecordPayment(null);
+                        setRecordPaymentForm({
+                          memberId: "",
+                          amount: "",
+                          paymentMethod: "",
+                        });
+                        fetchCycles();
+                        setTimeout(() => setSuccess(""), 5000);
+                      } catch (err: any) {
+                        setError(err.message || "Failed to record payment");
+                      } finally {
+                        setRecordingPayment(false);
+                      }
+                    }}
+                    disabled={recordingPayment}>
+                    {recordingPayment ? "Recording..." : "Record Payment"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowRecordPayment(null);
+                      setRecordPaymentForm({
+                        memberId: "",
+                        amount: "",
+                        paymentMethod: "",
+                      });
+                    }}>
+                    Cancel
+                  </Button>
+                </div>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {showDisburseForm && disbursingSequence && (
@@ -738,25 +1164,21 @@ export default function CyclesPage() {
                     {(() => {
                       const cycle = cycles.find((c) => c.id === showAddMember);
                       if (!cycle) return null;
-                      const joiningDate = new Date(addMemberForm.joiningDate);
-                      const startDate = new Date(cycle.startDate);
-                      const monthsElapsed = Math.max(
-                        0,
-                        Math.floor(
-                          (joiningDate.getTime() - startDate.getTime()) /
-                            (30 * 24 * 60 * 60 * 1000)
-                        )
-                      );
                       const monthlyAmount = parseFloat(addMemberForm.monthlyAmount) || 0;
-                      const catchUpAmount = monthsElapsed * monthlyAmount;
+                      // Count how many loans have already been disbursed
+                      const loansAlreadyGiven = cycle.sequences.filter(
+                        (seq) => seq.status === "DISBURSED" || seq.loan !== null
+                      ).length;
+                      // New member pays: monthlyAmount * number of loans already given
+                      const catchUpAmount = monthlyAmount * loansAlreadyGiven;
                       return (
                         <div className="text-xs text-muted-foreground space-y-1">
-                          <p>Months elapsed: {monthsElapsed}</p>
+                          <p>Loans already given: {loansAlreadyGiven}</p>
                           <p className="font-semibold text-foreground">
                             Catch-up amount: ₹{catchUpAmount.toFixed(2)}
                           </p>
                           <p className="text-xs">
-                            Member needs to pay ₹{catchUpAmount.toFixed(2)} to catch up with existing members.
+                            New member needs to pay ₹{catchUpAmount.toFixed(2)} ({loansAlreadyGiven} loans × ₹{monthlyAmount.toFixed(2)}) to join the cycle.
                           </p>
                         </div>
                       );

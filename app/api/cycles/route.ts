@@ -5,19 +5,9 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 
 const createCycleSchema = z.object({
-  memberId: z.string().min(1, "Member is required"), // Member receiving the loan
-  loanAmount: z.number().positive("Loan amount must be positive"),
-  loanMonths: z
-    .number()
-    .int()
-    .positive("Loan duration must be positive")
-    .default(10),
-  monthlyAmount: z.number().positive().optional(), // Monthly contribution amount
-  reason: z.string().optional(), // Reason for the loan
-  disbursedAt: z.string().optional(), // Optional disbursal date
-  disbursementMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(),
-  guarantor1Id: z.string().optional(),
-  guarantor2Id: z.string().optional(),
+  memberIds: z.array(z.string()).min(1, "At least one member is required"), // All members participating in the cycle
+  monthlyAmount: z.number().positive("Monthly amount must be positive"), // Monthly contribution per member
+  startDate: z.string().optional(), // Cycle start date
 });
 
 export async function GET(request: NextRequest) {
@@ -41,6 +31,14 @@ export async function GET(request: NextRequest) {
         },
         sequences: {
           include: { member: true },
+          orderBy: { month: "asc" },
+        },
+        collections: {
+          include: {
+            payments: {
+              include: { member: true },
+            },
+          },
           orderBy: { month: "asc" },
         },
       },
@@ -77,23 +75,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = createCycleSchema.parse(body);
 
-    // Verify member exists
-    const member = await prisma.member.findUnique({
-      where: { id: data.memberId },
-    });
-
-    if (!member) {
-      return NextResponse.json({ error: "Member not found" }, { status: 404 });
-    }
-
-    // Get all members who have savings to calculate total members
-    const allMembers = await prisma.member.findMany({
+    // Verify all members exist
+    const members = await prisma.member.findMany({
       where: {
-        savings: {
-          some: {},
-        },
+        id: { in: data.memberIds },
       },
     });
+
+    if (members.length !== data.memberIds.length) {
+      return NextResponse.json(
+        { error: "One or more members not found" },
+        { status: 404 }
+      );
+    }
 
     // Get the next cycle number
     const lastCycle = await prisma.loanCycle.findFirst({
@@ -102,33 +96,13 @@ export async function POST(request: NextRequest) {
 
     const cycleNumber = lastCycle ? lastCycle.cycleNumber + 1 : 1;
 
-    // Calculate start date (disbursal date or now)
-    const startDate = data.disbursedAt
-      ? new Date(data.disbursedAt)
-      : new Date();
+    // Calculate start date
+    const startDate = data.startDate ? new Date(data.startDate) : new Date();
 
-    // Get all savings to deduct from
-    const allSavings = await prisma.savings.findMany({
-      include: {
-        member: true,
-      },
-    });
+    // Calculate loan amount: monthlyAmount * number of members (pooled amount)
+    const loanAmount = data.monthlyAmount * data.memberIds.length;
 
-    const totalSavings = allSavings.reduce(
-      (sum, s) => sum + s.totalAmount,
-      0
-    );
-
-    if (totalSavings < data.loanAmount) {
-      return NextResponse.json(
-        {
-          error: `Insufficient savings pool. Available: ₹${totalSavings.toFixed(2)}, Required: ₹${data.loanAmount.toFixed(2)}`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // Create cycle and loan in a transaction with increased timeout
+    // Create cycle with loan sequences for each member
     const result = await prisma.$transaction(
       async (tx) => {
         // Create cycle
@@ -136,96 +110,42 @@ export async function POST(request: NextRequest) {
           data: {
             cycleNumber: cycleNumber,
             startDate: startDate,
-            monthlyAmount: data.monthlyAmount || 2000,
-            totalMembers: allMembers.length,
+            monthlyAmount: data.monthlyAmount,
+            totalMembers: data.memberIds.length,
             isActive: true,
+            currentMonth: 0,
           },
         });
 
-        // Deduct loan amount from savings pool proportionally
-        // Calculate how much to deduct from each member's savings based on their contribution
-        let remainingLoanAmount = data.loanAmount;
-        const savingsDeductions: Array<{ savingsId: string; amount: number; currentTotal: number }> = [];
-
-        // Sort savings by amount (descending) to deduct from largest first
-        const sortedSavings = [...allSavings].sort(
-          (a, b) => b.totalAmount - a.totalAmount
+        // Create loan sequences for each member (one per month, rotating)
+        // Each member gets the pooled amount (monthlyAmount * totalMembers) in their assigned month
+        const sequences = await Promise.all(
+          data.memberIds.map((memberId, index) => {
+            return tx.loanSequence.create({
+              data: {
+                cycleId: cycle.id,
+                memberId: memberId,
+                month: index + 1, // Month 1, 2, 3, etc.
+                loanAmount: loanAmount, // Pooled amount = monthlyAmount * totalMembers
+                status: "PENDING",
+              },
+            });
+          })
         );
 
-        for (const savings of sortedSavings) {
-          if (remainingLoanAmount <= 0) break;
-
-          const deductionAmount = Math.min(
-            remainingLoanAmount,
-            savings.totalAmount
-          );
-
-          if (deductionAmount > 0) {
-            savingsDeductions.push({
-              savingsId: savings.id,
-              amount: deductionAmount,
-              currentTotal: savings.totalAmount,
-            });
-            remainingLoanAmount -= deductionAmount;
-          }
-        }
-
-        // Batch update savings using updateMany where possible
-        // For each savings account, update and create transaction
-        const savingsUpdatePromises = savingsDeductions.map(async (deduction) => {
-          const newTotal = deduction.currentTotal - deduction.amount;
-          
-          // Update savings
-          await tx.savings.update({
-            where: { id: deduction.savingsId },
-            data: { totalAmount: newTotal },
-          });
-
-          // Create savings transaction to record the deduction
-          await tx.savingsTransaction.create({
-            data: {
-              savingsId: deduction.savingsId,
-              date: startDate,
-              amount: -deduction.amount, // Negative for deduction
-              total: newTotal,
-            },
-          });
-        });
-
-        // Execute all savings updates in parallel
-        await Promise.all(savingsUpdatePromises);
-
-        // Create and disburse the loan
-        const loan = await tx.loan.create({
-          data: {
-            memberId: data.memberId,
-            cycleId: cycle.id,
-            principal: data.loanAmount,
-            remaining: data.loanAmount,
-            months: data.loanMonths,
-            currentMonth: 0,
-            status: "ACTIVE",
-            disbursedAt: startDate,
-            disbursementMethod: data.disbursementMethod || null,
-            guarantor1Id: data.guarantor1Id || null,
-            guarantor2Id: data.guarantor2Id || null,
-            ...(data.reason && { reason: data.reason }),
-          },
-        });
-
-        return { cycle, loan };
+        return { cycle, sequences };
       },
       {
-        maxWait: 10000, // Maximum time to wait for a transaction slot
-        timeout: 15000, // Maximum time the transaction can run (15 seconds)
+        maxWait: 10000,
+        timeout: 15000,
       }
     );
 
     return NextResponse.json(
       {
         cycle: result.cycle,
-        loan: result.loan,
-        message: "Loan cycle created and loan disbursed successfully",
+        sequences: result.sequences,
+        message: `Cycle created successfully with ${data.memberIds.length} members. Each member will receive ₹${loanAmount.toFixed(2)} (pooled from ${data.memberIds.length} members × ₹${data.monthlyAmount.toFixed(2)}) in their assigned month.`,
       },
       { status: 201 }
     );

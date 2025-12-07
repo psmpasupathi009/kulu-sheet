@@ -101,27 +101,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get cycle details
+    // Get cycle details with sequences
     const cycle = await prisma.loanCycle.findUnique({
       where: { id: data.cycleId },
+      include: {
+        sequences: {
+          include: { member: true },
+          orderBy: { month: "asc" },
+        },
+      },
     });
 
     if (!cycle) {
       return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
     }
 
-    // Get all members who have savings (active members)
-    const allMembers = await prisma.member.findMany({
-      where: {
-        savings: {
-          some: {},
-        },
-      },
-    });
-
-    const activeMemberCount = allMembers.length;
-    // Calculate expected amount: monthlyAmount * number of active members
-    const expectedAmount = cycle.monthlyAmount * activeMemberCount;
+    // Calculate expected amount: monthlyAmount * number of members in cycle
+    const expectedAmount = cycle.monthlyAmount * cycle.totalMembers;
 
     const collection = await prisma.monthlyCollection.create({
       data: {
@@ -130,7 +126,7 @@ export async function POST(request: NextRequest) {
         collectionDate: new Date(data.collectionDate),
         totalCollected: 0,
         expectedAmount: expectedAmount,
-        activeMemberCount: activeMemberCount,
+        activeMemberCount: cycle.totalMembers,
         isCompleted: false,
       },
       include: {
@@ -284,13 +280,21 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Update collection total
+    // Update collection total and check if complete
     const collection = await prisma.monthlyCollection.findUnique({
       where: { id: data.collectionId },
       include: {
         payments: {
           include: {
             member: true,
+          },
+        },
+        cycle: {
+          include: {
+            sequences: {
+              include: { member: true },
+              orderBy: { month: "asc" },
+            },
           },
         },
       },
@@ -302,13 +306,118 @@ export async function PUT(request: NextRequest) {
         0
       );
 
+      const isCompleted = totalCollected >= (collection.expectedAmount || 0);
+
       await prisma.monthlyCollection.update({
         where: { id: data.collectionId },
         data: {
           totalCollected: totalCollected,
-          isCompleted: totalCollected >= (collection.expectedAmount || 0),
+          isCompleted: isCompleted,
         },
       });
+
+      // If collection is complete, automatically disburse loan to the member scheduled for this month
+      if (isCompleted && collection.cycle) {
+        const sequenceForMonth = collection.cycle.sequences.find(
+          (seq) => seq.month === collection.month
+        );
+
+        if (sequenceForMonth && sequenceForMonth.status === "PENDING") {
+          // Disburse the loan automatically
+          const loanAmount = sequenceForMonth.loanAmount;
+          
+          // Deduct from pooled savings (all members' savings proportionally)
+          const allSavings = await prisma.savings.findMany({
+            include: { member: true },
+          });
+
+          const totalSavings = allSavings.reduce(
+            (sum, s) => sum + s.totalAmount,
+            0
+          );
+
+          if (totalSavings >= loanAmount) {
+            // Deduct proportionally from all savings
+            let remainingLoanAmount = loanAmount;
+            const savingsDeductions: Array<{ savingsId: string; amount: number; currentTotal: number }> = [];
+
+            const sortedSavings = [...allSavings].sort(
+              (a, b) => b.totalAmount - a.totalAmount
+            );
+
+            for (const savings of sortedSavings) {
+              if (remainingLoanAmount <= 0) break;
+
+              const deductionAmount = Math.min(
+                remainingLoanAmount,
+                savings.totalAmount
+              );
+
+              if (deductionAmount > 0) {
+                savingsDeductions.push({
+                  savingsId: savings.id,
+                  amount: deductionAmount,
+                  currentTotal: savings.totalAmount,
+                });
+                remainingLoanAmount -= deductionAmount;
+              }
+            }
+
+            // Apply deductions
+            await Promise.all(
+              savingsDeductions.map(async (deduction) => {
+                const newTotal = deduction.currentTotal - deduction.amount;
+                
+                await prisma.savings.update({
+                  where: { id: deduction.savingsId },
+                  data: { totalAmount: newTotal },
+                });
+
+                await prisma.savingsTransaction.create({
+                  data: {
+                    savingsId: deduction.savingsId,
+                    date: new Date(),
+                    amount: -deduction.amount,
+                    total: newTotal,
+                  },
+                });
+              })
+            );
+
+            // Create and disburse the loan
+            const loan = await prisma.loan.create({
+              data: {
+                memberId: sequenceForMonth.memberId,
+                cycleId: collection.cycleId,
+                sequenceId: sequenceForMonth.id,
+                principal: loanAmount,
+                remaining: loanAmount,
+                months: 10, // 10 months repayment
+                currentMonth: 0,
+                status: "ACTIVE",
+                disbursedAt: new Date(collection.collectionDate),
+              },
+            });
+
+            // Update sequence status
+            await prisma.loanSequence.update({
+              where: { id: sequenceForMonth.id },
+              data: {
+                status: "DISBURSED",
+                disbursedAt: new Date(collection.collectionDate),
+              },
+            });
+
+            // Update cycle current month
+            await prisma.loanCycle.update({
+              where: { id: collection.cycleId },
+              data: {
+                currentMonth: collection.month,
+              },
+            });
+          }
+        }
+      }
     }
 
     return NextResponse.json({ payment }, { status: 200 });

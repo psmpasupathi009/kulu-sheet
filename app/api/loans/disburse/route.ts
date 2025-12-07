@@ -36,8 +36,7 @@ export async function POST(request: NextRequest) {
     const sequence = await prisma.loanSequence.findUnique({
       where: { id: data.sequenceId },
       include: {
-        cycle: {
-        },
+        cycle: true,
         member: true,
       },
     });
@@ -56,47 +55,116 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // No group fund - loans are disbursed from savings pool
-    // Default to 10 months repayment
-    const loanMonths = 10;
+    const loanAmount = sequence.loanAmount;
+    const disbursedDate = data.disbursedAt ? new Date(data.disbursedAt) : new Date();
 
-    // Create loan
-    const loan = await prisma.loan.create({
-      data: {
-        memberId: sequence.memberId,
-        cycleId: sequence.cycleId,
-        sequenceId: sequence.id,
-        principal: sequence.loanAmount,
-        remaining: sequence.loanAmount,
-        months: loanMonths, // 10 months for ROSCA
-        currentMonth: 0,
-        status: "ACTIVE",
-        disbursedAt: new Date(data.disbursedAt || new Date()),
-        guarantor1Id: data.guarantor1Id || null,
-        guarantor2Id: data.guarantor2Id || null,
-        disbursementMethod: data.disbursementMethod || null,
-      },
-      include: {
-        member: true,
-        cycle: true,
-        sequence: true,
-      },
+    // Get all savings to deduct from
+    const allSavings = await prisma.savings.findMany({
+      include: { member: true },
     });
 
-    // Update sequence
-    await prisma.loanSequence.update({
-      where: { id: sequence.id },
-      data: {
-        status: "DISBURSED",
-        disbursedAt: new Date(data.disbursedAt || new Date()),
-      },
-    });
+    const totalSavings = allSavings.reduce(
+      (sum, s) => sum + s.totalAmount,
+      0
+    );
 
-    // Group fund removed - no longer needed
+    if (totalSavings < loanAmount) {
+      return NextResponse.json(
+        {
+          error: `Insufficient savings pool. Available: ₹${totalSavings.toFixed(2)}, Required: ₹${loanAmount.toFixed(2)}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Create loan and deduct from savings in a transaction
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // Deduct loan amount from savings pool proportionally
+        let remainingLoanAmount = loanAmount;
+        const savingsDeductions: Array<{ savingsId: string; amount: number; currentTotal: number }> = [];
+
+        const sortedSavings = [...allSavings].sort(
+          (a, b) => b.totalAmount - a.totalAmount
+        );
+
+        for (const savings of sortedSavings) {
+          if (remainingLoanAmount <= 0) break;
+
+          const deductionAmount = Math.min(
+            remainingLoanAmount,
+            savings.totalAmount
+          );
+
+          if (deductionAmount > 0) {
+            savingsDeductions.push({
+              savingsId: savings.id,
+              amount: deductionAmount,
+              currentTotal: savings.totalAmount,
+            });
+            remainingLoanAmount -= deductionAmount;
+          }
+        }
+
+        // Apply deductions
+        await Promise.all(
+          savingsDeductions.map(async (deduction) => {
+            const newTotal = deduction.currentTotal - deduction.amount;
+            
+            await tx.savings.update({
+              where: { id: deduction.savingsId },
+              data: { totalAmount: newTotal },
+            });
+
+            await tx.savingsTransaction.create({
+              data: {
+                savingsId: deduction.savingsId,
+                date: disbursedDate,
+                amount: -deduction.amount,
+                total: newTotal,
+              },
+            });
+          })
+        );
+
+        // Create loan
+        const loan = await tx.loan.create({
+          data: {
+            memberId: sequence.memberId,
+            cycleId: sequence.cycleId,
+            sequenceId: sequence.id,
+            principal: loanAmount,
+            remaining: loanAmount,
+            months: 10, // 10 months repayment
+            currentMonth: 0,
+            status: "ACTIVE",
+            disbursedAt: disbursedDate,
+            guarantor1Id: data.guarantor1Id || null,
+            guarantor2Id: data.guarantor2Id || null,
+            disbursementMethod: data.disbursementMethod || null,
+          },
+        });
+
+        // Update sequence
+        await tx.loanSequence.update({
+          where: { id: sequence.id },
+          data: {
+            status: "DISBURSED",
+            disbursedAt: disbursedDate,
+          },
+        });
+
+        return { loan };
+      },
+      {
+        maxWait: 10000,
+        timeout: 15000,
+      }
+    );
 
     return NextResponse.json(
       {
-        loan,
+        loan: result.loan,
         message: "Loan disbursed successfully",
       },
       { status: 200 }

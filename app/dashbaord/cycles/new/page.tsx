@@ -22,19 +22,12 @@ import {
   ArrowLeft,
   Calendar,
   DollarSign,
-  Clock,
-  FileText,
-  Building2,
-  User,
   Users,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
-
-interface Group {
-  id: string;
-  name: string;
-}
 
 interface Member {
   id: string;
@@ -45,130 +38,41 @@ interface Member {
 export default function NewCyclePage() {
   const router = useRouter();
   const { user } = useAuth();
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [groupMembers, setGroupMembers] = useState<Member[]>([]);
   const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [formData, setFormData] = useState({
-    groupId: "",
-    memberId: "",
-    loanAmount: "",
-    loanMonths: "10",
     monthlyAmount: "2000",
-    reason: "",
-    disbursedAt: new Date().toISOString().split("T")[0],
-    guarantor1Id: "",
-    guarantor2Id: "",
+    startDate: new Date().toISOString().split("T")[0],
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingMembers, setLoadingMembers] = useState(false);
 
   useEffect(() => {
-    fetchGroups();
     fetchAllMembers();
   }, []);
-
-  useEffect(() => {
-    if (formData.groupId) {
-      fetchGroupMembers(formData.groupId);
-    } else {
-      setGroupMembers([]);
-      setFormData((prev) => ({ ...prev, memberId: "" }));
-    }
-  }, [formData.groupId]);
-
-  const fetchGroups = async () => {
-    try {
-      const response = await fetch("/api/groups");
-      if (response.ok) {
-        const data = await response.json();
-        setGroups(data.groups);
-      }
-    } catch (error) {
-      console.error("Error fetching groups:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchAllMembers = async () => {
     try {
       const response = await fetch("/api/members");
       if (response.ok) {
         const data = await response.json();
-        setAllMembers(data.members);
+        setAllMembers(data.members || []);
       }
     } catch (error) {
       console.error("Error fetching members:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchGroupMembers = async (groupId: string) => {
-    setLoadingMembers(true);
-    try {
-      const response = await fetch(`/api/groups/${groupId}/members`);
-      if (response.ok) {
-        const data = await response.json();
-
-        // Handle both response structures
-        const membersList = data.members || [];
-
-        // Filter active members and extract member data
-        const activeMembers = membersList
-          .filter((gm: { isActive?: boolean; member?: { id: string } }) => {
-            const isActive = gm.isActive !== false; // Default to true if not specified
-            const hasMember = gm.member && gm.member.id;
-            return isActive && hasMember;
-          })
-          .map(
-            (gm: {
-              member: { id: string; name?: string; userId?: string };
-            }) => {
-              const member = gm.member;
-              return {
-                id: member.id,
-                name: member.name || "Unknown",
-                userId: member.userId || member.id,
-              };
-            }
-          );
-
-        setGroupMembers(activeMembers);
-
-        // Reset member selection if current selection is not in the list
-        if (
-          formData.memberId &&
-          !activeMembers.some((m: Member) => m.id === formData.memberId)
-        ) {
-          setFormData((prev) => ({ ...prev, memberId: "" }));
-        }
-
-        if (activeMembers.length === 0) {
-          setError(
-            "No active members found in this group. Please add members to the group first."
-          );
-        } else {
-          setError(""); // Clear error if members are found
-        }
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        console.error(
-          "Failed to fetch group members:",
-          response.status,
-          errorData
-        );
-        setGroupMembers([]);
-        setError(errorData.error || "Failed to load group members");
-      }
-    } catch (error) {
-      console.error("Error fetching group members:", error);
-      setGroupMembers([]);
-      setError("Error loading group members. Please try again.");
-    } finally {
-      setLoadingMembers(false);
-    }
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId]
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -178,56 +82,44 @@ export default function NewCyclePage() {
     setSubmitting(true);
 
     // Validation
-    if (!formData.memberId) {
-      setError("Please select a member");
+    if (selectedMemberIds.length === 0) {
+      setError("Please select at least one member");
       setSubmitting(false);
       return;
     }
 
-    if (!formData.loanAmount || parseFloat(formData.loanAmount) <= 0) {
-      setError("Please enter a valid loan amount");
-      setSubmitting(false);
-      return;
-    }
-
-    if (!formData.loanMonths || parseInt(formData.loanMonths) <= 0) {
-      setError("Please enter a valid loan duration");
+    if (!formData.monthlyAmount || parseFloat(formData.monthlyAmount) <= 0) {
+      setError("Please enter a valid monthly contribution amount");
       setSubmitting(false);
       return;
     }
 
     try {
-      const disbursedAt = new Date(formData.disbursedAt);
-      disbursedAt.setHours(0, 0, 0, 0);
+      const startDate = new Date(formData.startDate);
+      startDate.setHours(0, 0, 0, 0);
 
       const response = await fetch("/api/cycles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          groupId: formData.groupId || undefined,
-          memberId: formData.memberId,
-          loanAmount: parseFloat(formData.loanAmount),
-          loanMonths: parseInt(formData.loanMonths),
+          memberIds: selectedMemberIds,
           monthlyAmount: parseFloat(formData.monthlyAmount),
-          reason: formData.reason || undefined,
-          disbursedAt: disbursedAt.toISOString(),
-          guarantor1Id: formData.guarantor1Id || undefined,
-          guarantor2Id: formData.guarantor2Id || undefined,
+          startDate: startDate.toISOString(),
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create loan cycle");
+        throw new Error(data.error || "Failed to create cycle");
       }
 
-      setSuccess("Loan cycle created and loan disbursed successfully!");
+      setSuccess(data.message || "Cycle created successfully!");
       setTimeout(() => {
         router.push("/dashbaord/cycles");
-      }, 1500);
+      }, 2000);
     } catch (err: any) {
-      setError(err.message || "Failed to create loan cycle");
+      setError(err.message || "Failed to create cycle");
     } finally {
       setSubmitting(false);
     }
@@ -255,13 +147,9 @@ export default function NewCyclePage() {
     return <div>Loading...</div>;
   }
 
-  // Calculate total interest
-  const loanAmount = parseFloat(formData.loanAmount) || 0;
-  const loanMonths = parseInt(formData.loanMonths) || 0;
-  const monthlyPayment =
-    loanAmount && loanMonths
-      ? loanAmount / loanMonths // Monthly payment = loan amount / months
-      : 0;
+  const monthlyAmount = parseFloat(formData.monthlyAmount) || 0;
+  const totalMembers = selectedMemberIds.length;
+  const pooledLoanAmount = monthlyAmount * totalMembers;
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -274,10 +162,10 @@ export default function NewCyclePage() {
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-bold">
-            Create Loan Cycle & Disburse Loan
+            Create New Loan Cycle
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Create a new loan cycle and disburse loan to a member
+            Set up a monthly rotation cycle where members invest monthly and receive loans in rotation
           </p>
         </div>
       </div>
@@ -297,85 +185,16 @@ export default function NewCyclePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Loan Details</CardTitle>
+          <CardTitle>Cycle Configuration</CardTitle>
           <CardDescription>
-            Create a new ROSCA cycle. Members invest monthly, and one member receives a loan each month (rotating). 
-            The first member will receive the loan immediately. Other members can be added later with catch-up payments if joining mid-cycle.
+            Select members who will participate in this cycle. Each member will invest monthly, 
+            and the pooled amount will be given as a loan to one member each month in rotation. 
+            Each loan must be repaid within 10 months without interest or penalties.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="groupId">
-                  <Building2 className="mr-2 h-4 w-4 inline" />
-                  Group (Optional)
-                </FieldLabel>
-                <select
-                  id="groupId"
-                  value={formData.groupId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, groupId: e.target.value })
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">No Group (Simple Cycle)</option>
-                  {groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
-                <FieldDescription>
-                  Optional: Select a group if this cycle is part of a group. Leave empty for a simple cycle.
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="memberId">
-                  <User className="mr-2 h-4 w-4 inline" />
-                  Member (Receiving First Loan){" "}
-                  <span className="text-destructive">*</span>
-                </FieldLabel>
-                <select
-                  id="memberId"
-                  value={formData.memberId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, memberId: e.target.value })
-                  }
-                  required
-                  disabled={
-                    !!formData.groupId &&
-                    (loadingMembers || groupMembers.length === 0)
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">
-                    {formData.groupId
-                      ? loadingMembers
-                        ? "Loading members..."
-                        : groupMembers.length === 0
-                        ? "No active members in this group"
-                        : "Select a member from group"
-                      : "Select a member"}
-                  </option>
-                  {formData.groupId && groupMembers.length > 0
-                    ? groupMembers.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name} ({member.userId || member.id})
-                        </option>
-                      ))
-                    : allMembers.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name} ({member.userId || member.id})
-                        </option>
-                      ))}
-                </select>
-                <FieldDescription>
-                  {formData.groupId
-                    ? `Select the member who will receive the first loan. ${groupMembers.length} member(s) available in group.`
-                    : "Select the member who will receive the first loan in this cycle. Other members can be added later."}
-                </FieldDescription>
-              </Field>
-
               <Field>
                 <FieldLabel htmlFor="monthlyAmount">
                   <DollarSign className="mr-2 h-4 w-4 inline" />
@@ -395,159 +214,95 @@ export default function NewCyclePage() {
                   placeholder="2000"
                 />
                 <FieldDescription>
-                  Monthly amount each member will contribute to the cycle
+                  Amount each member will contribute every month
                 </FieldDescription>
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="loanAmount">
-                  <DollarSign className="mr-2 h-4 w-4 inline" />
-                  Loan Amount (₹) <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Input
-                  id="loanAmount"
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={formData.loanAmount}
-                  onChange={(e) =>
-                    setFormData({ ...formData, loanAmount: e.target.value })
-                  }
-                  required
-                  placeholder="1000"
-                />
-                <FieldDescription>
-                  Total loan amount to be disbursed to the member
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="loanMonths">
-                  <Clock className="mr-2 h-4 w-4 inline" />
-                  Loan Duration (Months){" "}
-                  <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Input
-                  id="loanMonths"
-                  type="number"
-                  min="1"
-                  value={formData.loanMonths}
-                  onChange={(e) =>
-                    setFormData({ ...formData, loanMonths: e.target.value })
-                  }
-                  required
-                  placeholder="10"
-                />
-                <FieldDescription>
-                  Number of months for loan repayment (default: 10 months). Member needs to pay the loan amount within this duration.
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="reason">
-                  <FileText className="mr-2 h-4 w-4 inline" />
-                  Reason for Loan (Optional)
-                </FieldLabel>
-                <Input
-                  id="reason"
-                  type="text"
-                  value={formData.reason}
-                  onChange={(e) =>
-                    setFormData({ ...formData, reason: e.target.value })
-                  }
-                  placeholder="e.g., Business expansion, Medical emergency, etc."
-                />
-                <FieldDescription>
-                  Optional: Purpose or reason for this loan
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="disbursedAt">
+                <FieldLabel htmlFor="startDate">
                   <Calendar className="mr-2 h-4 w-4 inline" />
-                  Disbursal Date <span className="text-destructive">*</span>
+                  Cycle Start Date <span className="text-destructive">*</span>
                 </FieldLabel>
                 <Input
-                  id="disbursedAt"
+                  id="startDate"
                   type="date"
-                  value={formData.disbursedAt}
+                  value={formData.startDate}
                   onChange={(e) =>
-                    setFormData({ ...formData, disbursedAt: e.target.value })
+                    setFormData({ ...formData, startDate: e.target.value })
                   }
                   required
                 />
                 <FieldDescription>
-                  Date when the loan will be disbursed
+                  Date when the cycle will begin
                 </FieldDescription>
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="guarantor1Id">
+                <FieldLabel>
                   <Users className="mr-2 h-4 w-4 inline" />
-                  Guarantor 1 (Optional)
+                  Select Members{" "}
+                  <span className="text-destructive">*</span>
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    ({selectedMemberIds.length} selected)
+                  </span>
                 </FieldLabel>
-                <select
-                  id="guarantor1Id"
-                  value={formData.guarantor1Id}
-                  onChange={(e) =>
-                    setFormData({ ...formData, guarantor1Id: e.target.value })
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">None</option>
-                  {allMembers
-                    .filter((m) => m.id !== formData.memberId)
-                    .map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name} ({member.userId})
-                      </option>
-                    ))}
-                </select>
-                <FieldDescription>
-                  Optional: First guarantor for this loan
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="guarantor2Id">
-                  <Users className="mr-2 h-4 w-4 inline" />
-                  Guarantor 2 (Optional)
-                </FieldLabel>
-                <select
-                  id="guarantor2Id"
-                  value={formData.guarantor2Id}
-                  onChange={(e) =>
-                    setFormData({ ...formData, guarantor2Id: e.target.value })
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">None</option>
-                  {allMembers
-                    .filter(
-                      (m) =>
-                        m.id !== formData.memberId &&
-                        m.id !== formData.guarantor1Id
-                    )
-                    .map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name} ({member.userId})
-                      </option>
-                    ))}
-                </select>
-                <FieldDescription>
-                  Optional: Second guarantor for this loan
-                </FieldDescription>
-              </Field>
-
-              {loanAmount > 0 && (
-                <div className="p-4 bg-muted rounded-lg space-y-2">
-                  <p className="text-sm font-medium">Loan Summary:</p>
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>Principal: ₹{loanAmount.toFixed(2)}</p>
-                    <p>
-                      Monthly Payment: ₹
-                      {monthlyPayment.toFixed(2)}
+                <div className="border rounded-md p-4 max-h-96 overflow-y-auto">
+                  {allMembers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No members found. Please create members first.
                     </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {allMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          className={`flex items-center justify-between p-3 rounded-md border cursor-pointer transition-colors ${
+                            selectedMemberIds.includes(member.id)
+                              ? "bg-primary/10 border-primary"
+                              : "hover:bg-accent"
+                          }`}
+                          onClick={() => toggleMemberSelection(member.id)}>
+                          <div className="flex items-center gap-3">
+                            {selectedMemberIds.includes(member.id) ? (
+                              <CheckCircle2 className="h-5 w-5 text-primary" />
+                            ) : (
+                              <XCircle className="h-5 w-5 text-muted-foreground" />
+                            )}
+                            <div>
+                              <p className="font-medium">{member.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                ID: {member.userId}
+                              </p>
+                            </div>
+                          </div>
+                          {selectedMemberIds.includes(member.id) && (
+                            <span className="text-sm text-primary font-medium">
+                              Month {selectedMemberIds.indexOf(member.id) + 1}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <FieldDescription>
+                  Click on members to select them. Selected members will receive loans in rotation order (Month 1, Month 2, etc.)
+                </FieldDescription>
+              </Field>
+
+              {totalMembers > 0 && monthlyAmount > 0 && (
+                <div className="p-4 bg-muted rounded-lg space-y-2">
+                  <p className="text-sm font-medium">Cycle Summary:</p>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>Total Members: {totalMembers}</p>
+                    <p>Monthly Contribution per Member: ₹{monthlyAmount.toFixed(2)}</p>
                     <p className="font-semibold text-foreground">
-                      Total Loan Amount: ₹{loanAmount.toFixed(2)}
+                      Pooled Loan Amount (per month): ₹{pooledLoanAmount.toFixed(2)}
+                    </p>
+                    <p className="text-xs mt-2 pt-2 border-t">
+                      Each member will receive ₹{pooledLoanAmount.toFixed(2)} in their assigned month 
+                      and must repay it within 10 months (₹{(pooledLoanAmount / 10).toFixed(2)} per month) 
+                      without interest or penalties.
                     </p>
                   </div>
                 </div>
@@ -558,16 +313,16 @@ export default function NewCyclePage() {
                   <Button
                     type="submit"
                     className="flex-1"
-                    disabled={submitting}>
+                    disabled={submitting || totalMembers === 0}>
                     {submitting ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Creating & Disbursing...
+                        Creating Cycle...
                       </>
                     ) : (
                       <>
-                        <DollarSign className="mr-2 h-4 w-4" />
-                        Create Cycle & Disburse Loan
+                        <Users className="mr-2 h-4 w-4" />
+                        Create Cycle
                       </>
                     )}
                   </Button>
