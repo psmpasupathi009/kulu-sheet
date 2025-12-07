@@ -154,7 +154,8 @@ export async function POST(request: NextRequest) {
     // Handle Prisma unique constraint errors
     if (error && typeof error === "object" && "code" in error) {
       if (error.code === "P2002") {
-        const meta = error.meta as { target?: string[] } | undefined;
+        const prismaError = error as { meta?: { target?: string[] } };
+        const meta = prismaError.meta;
         if (meta?.target?.includes("accountNumber")) {
           return NextResponse.json(
             { error: "Account number already exists" },

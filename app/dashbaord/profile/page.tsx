@@ -65,34 +65,14 @@ interface MemberProfile {
     principal: number;
     remaining: number;
     status: string;
-    interestRate: number;
-    weeks: number;
-    currentWeek: number;
-    totalInterest: number;
+    months: number;
+    currentMonth: number;
     disbursedAt: string | null;
     completedAt: string | null;
-    cycle: {
+    group: {
       cycleNumber: number;
     } | null;
-    interestDistributions: Array<{
-      id: string;
-      amount: number;
-      distributionDate: string;
-    }>;
   }>;
-    joiningDate: string;
-    interestDistributions: Array<{
-      id: string;
-      amount: number;
-      distributionDate: string;
-      loan: {
-        id: string;
-        principal: number;
-        cycle: {
-          cycleNumber: number;
-        } | null;
-      };
-    }>;
 }
 
 export default function ProfilePage() {
@@ -142,7 +122,6 @@ export default function ProfilePage() {
   }
 
   const filteredLoans = profile.loans;
-  const filteredInterest = profile.interestDistributions;
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -267,11 +246,10 @@ export default function ProfilePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Loan Amount</TableHead>
-                    <TableHead>Cycle</TableHead>
+                    <TableHead>Group</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Remaining</TableHead>
                     <TableHead>Progress</TableHead>
-                    <TableHead>Interest</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -281,7 +259,9 @@ export default function ProfilePage() {
                       <TableCell className="font-medium">
                         ₹{loan.principal.toFixed(2)}
                       </TableCell>
-                      <TableCell>Cycle {loan.cycle?.cycleNumber || "-"}</TableCell>
+                      <TableCell>
+                        {loan.group ? (loan.group.name || `Group ${loan.group.groupNumber || "-"}`) : "-"}
+                      </TableCell>
                       <TableCell>
                         <span
                           className={`px-2 py-1 text-xs rounded ${
@@ -296,9 +276,8 @@ export default function ProfilePage() {
                       </TableCell>
                       <TableCell>₹{loan.remaining.toFixed(2)}</TableCell>
                       <TableCell>
-                        {loan.currentWeek}/{loan.weeks} weeks
+                        {loan.currentMonth}/{loan.months} months
                       </TableCell>
-                      <TableCell>₹{loan.totalInterest.toFixed(2)}</TableCell>
                       <TableCell>
                         <Button
                           variant="outline"
@@ -317,58 +296,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Interest Distributions */}
-      {filteredInterest.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Interest Received</CardTitle>
-            <CardDescription>
-              Interest distributions from completed loans
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Loan Amount</TableHead>
-                    <TableHead>Cycle</TableHead>
-                    <TableHead>Interest Received</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredInterest.map((dist) => (
-                    <TableRow key={dist.id}>
-                      <TableCell>
-                        {format(new Date(dist.distributionDate), "dd/MM/yyyy")}
-                      </TableCell>
-                      <TableCell>₹{dist.loan.principal.toFixed(2)}</TableCell>
-                      <TableCell>
-                        {dist.loan.cycle ? `Cycle ${dist.loan.cycle.cycleNumber}` : "-"}
-                      </TableCell>
-                      <TableCell className="font-semibold text-green-600">
-                        ₹{dist.amount.toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold">Total Interest Received:</span>
-                <span className="text-lg font-bold text-green-600">
-                  ₹
-                  {filteredInterest
-                    .reduce((sum, d) => sum + d.amount, 0)
-                    .toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Savings */}
       {profile.savings.length > 0 && (

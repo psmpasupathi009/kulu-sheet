@@ -5,9 +5,9 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 
 const repayLoanSchema = z.object({
-  loanId: z.string(),
-  paymentDate: z.string().optional(), // Optional, defaults to now
-  paymentMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(), // Payment method for repayment
+  loanId: z.string().min(1, "Loan ID is required"),
+  paymentDate: z.string(),
+  paymentMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -20,207 +20,119 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await verifyToken(token);
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Forbidden - Admin access required" },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
     const data = repayLoanSchema.parse(body);
 
-    // Get loan with member and cycle info
+    // Get loan with transactions
     const loan = await prisma.loan.findUnique({
       where: { id: data.loanId },
       include: {
-        member: true,
-        cycle: true,
+        transactions: {
+          orderBy: { month: "asc" },
+        },
       },
     });
 
     if (!loan) {
-      return NextResponse.json({ error: "Loan not found" }, { status: 404 });
-    }
-
-    // Non-admin users can only repay their own loans
-    // Check if user's userId matches member's userId
-    if (user.role !== "ADMIN") {
-      const userRecord = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { userId: true },
-      });
-
-      if (!userRecord?.userId || userRecord.userId !== loan.member.userId) {
-        return NextResponse.json(
-          { error: "Forbidden - You can only repay your own loans" },
-          { status: 403 }
-        );
-      }
+      return NextResponse.json(
+        { error: "Loan not found" },
+        { status: 404 }
+      );
     }
 
     if (loan.status === "COMPLETED") {
       return NextResponse.json(
-        { error: "Loan already completed" },
+        { error: "Loan is already completed" },
         { status: 400 }
       );
     }
 
-    // Calculate expected month based on disbursal date
-    const disbursedDate = loan.disbursedAt
-      ? new Date(loan.disbursedAt)
-      : new Date();
-    const paymentDate = data.paymentDate
-      ? new Date(data.paymentDate)
-      : new Date();
-
-    // Calculate monthly payment amount based on loan
-    // Monthly principal = total principal / total months (no interest, no penalty)
-    const monthlyPrincipal = loan.principal / loan.months;
-
-    // No interest, no penalty - only principal payments
-    const monthlyPayment = monthlyPrincipal;
-    const totalPayment = monthlyPayment;
-
-    // Calculate new remaining balance
-    const newRemaining = Math.max(0, loan.remaining - monthlyPrincipal);
-    const newMonth = loan.currentMonth + 1; // Advance by 1 month
-
-    // Calculate payment breakdown
-    const payment = {
-      principal: monthlyPrincipal,
-      interest: 0, // No interest
-      total: totalPayment, // Principal only
-      newBalance: newRemaining,
-    };
-
-    // Update loan
-    const updatedLoan = await prisma.loan.update({
-      where: { id: loan.id },
-      data: {
-        remaining: payment.newBalance,
-        currentMonth: newMonth,
-        totalPrincipalPaid: loan.totalPrincipalPaid + payment.principal,
-        status: payment.newBalance <= 0 ? "COMPLETED" : "ACTIVE",
-        completedAt: payment.newBalance <= 0 ? paymentDate : null,
-      },
-    });
-
-    // Create transaction
-    const transaction = await prisma.loanTransaction.create({
-      data: {
-        loanId: loan.id,
-        date: paymentDate,
-        amount: payment.principal,
-        remaining: payment.newBalance,
-        month: newMonth,
-        paymentMethod: data.paymentMethod || null,
-      },
-    });
-
-    // Add repayment back to savings pool proportionally
-    // Get all members who have savings
-    const allMembers = await prisma.member.findMany({
-      where: {
-        savings: {
-          some: {},
-        },
-      },
-      include: {
-        savings: true,
-      },
-    });
-
-    if (allMembers.length > 0) {
-      // Calculate total savings to determine distribution proportion
-      const totalSavings = allMembers.reduce(
-        (sum, m) => sum + (m.savings[0]?.totalAmount || 0),
-        0
+    if (loan.status === "DEFAULTED") {
+      return NextResponse.json(
+        { error: "Cannot make payment on defaulted loan" },
+        { status: 400 }
       );
-
-      if (totalSavings > 0) {
-        // Distribute repayment proportionally based on each member's savings
-        const distributionPromises = allMembers.map(async (member) => {
-          const memberSavings = member.savings[0]?.totalAmount || 0;
-          const savingsPercentage = memberSavings / totalSavings;
-          const repaymentShare = payment.principal * savingsPercentage;
-
-          if (repaymentShare > 0) {
-            let savings = member.savings[0];
-            if (!savings) {
-              savings = await prisma.savings.create({
-                data: {
-                  memberId: member.id,
-                  totalAmount: 0,
-                },
-              });
-            }
-
-            // Add repayment share to member's savings
-            const newTotal = savings.totalAmount + repaymentShare;
-            await prisma.savingsTransaction.create({
-              data: {
-                savingsId: savings.id,
-                date: paymentDate,
-                amount: repaymentShare,
-                total: newTotal,
-              },
-            });
-
-            await prisma.savings.update({
-              where: { id: savings.id },
-              data: {
-                totalAmount: newTotal,
-              },
-            });
-          }
-        });
-
-        await Promise.all(distributionPromises);
-      } else {
-        // If no savings exist, distribute equally among all members
-        const equalShare = payment.principal / allMembers.length;
-        const distributionPromises = allMembers.map(async (member) => {
-          let savings = member.savings[0];
-          if (!savings) {
-            savings = await prisma.savings.create({
-              data: {
-                memberId: member.id,
-                totalAmount: 0,
-              },
-            });
-          }
-
-          const newTotal = savings.totalAmount + equalShare;
-          await prisma.savingsTransaction.create({
-            data: {
-              savingsId: savings.id,
-              date: paymentDate,
-              amount: equalShare,
-              total: newTotal,
-            },
-          });
-
-          await prisma.savings.update({
-            where: { id: savings.id },
-            data: {
-              totalAmount: newTotal,
-            },
-          });
-        });
-
-        await Promise.all(distributionPromises);
-      }
     }
+
+    // Simple monthly payment: principal / months (no interest, no penalties)
+    const monthlyPayment = loan.principal / loan.months;
+    
+    // Check if loan is already completed
+    if (loan.currentMonth >= loan.months) {
+      return NextResponse.json(
+        { error: "Loan is already fully paid" },
+        { status: 400 }
+      );
+    }
+
+    // Calculate payment amount (one month's payment)
+    const principalPayment = Math.min(monthlyPayment, loan.remaining);
+
+    // Check if payment exceeds remaining
+    if (principalPayment > loan.remaining) {
+      return NextResponse.json(
+        { error: `Payment exceeds remaining balance. Remaining: ₹${loan.remaining.toFixed(2)}` },
+        { status: 400 }
+      );
+    }
+
+    // Calculate new values after payment
+    const newRemaining = Math.max(0, loan.remaining - principalPayment);
+    const newCurrentMonth = loan.currentMonth + 1;
+    const newTotalPrincipalPaid = loan.totalPrincipalPaid + principalPayment;
+
+    // Check if loan is complete (all months paid)
+    const isComplete = newCurrentMonth >= loan.months || newRemaining <= 0.01;
+    const newStatus = isComplete ? "COMPLETED" : (loan.status === "PENDING" ? "ACTIVE" : loan.status);
+
+    // Create transaction and update loan in a single transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create loan transaction
+      const transaction = await tx.loanTransaction.create({
+        data: {
+          loanId: loan.id,
+          date: new Date(data.paymentDate),
+          amount: principalPayment,
+          remaining: newRemaining,
+          month: newCurrentMonth,
+          paymentMethod: data.paymentMethod || null,
+        },
+      });
+
+      // Update loan
+      const updatedLoan = await tx.loan.update({
+        where: { id: loan.id },
+        data: {
+          remaining: newRemaining,
+          currentMonth: newCurrentMonth,
+          totalPrincipalPaid: newTotalPrincipalPaid,
+          status: newStatus,
+          completedAt: newRemaining <= 0.01 ? new Date() : null,
+        },
+      });
+
+      return { transaction, loan: updatedLoan };
+    });
 
     return NextResponse.json(
       {
-        loan: updatedLoan,
-        transaction,
         payment: {
-          principal: payment.principal,
-          total: payment.total,
-          newBalance: payment.newBalance,
-          monthlyAmount: monthlyPayment, // Total amount to pay per month (principal only)
-          paymentMethod: data.paymentMethod || null,
+          id: result.transaction.id,
+          amount: principalPayment,
+          remaining: newRemaining,
+          month: newCurrentMonth,
         },
+        loan: result.loan,
+        message: newStatus === "COMPLETED" 
+          ? `Loan fully repaid! All ${loan.months} months completed.` 
+          : `Monthly payment of ₹${principalPayment.toFixed(2)} recorded. Progress: ${newCurrentMonth}/${loan.months} months`,
       },
       { status: 200 }
     );
@@ -232,10 +144,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("Error processing loan repayment:", error);
+    console.error("Error recording loan payment:", error);
     return NextResponse.json(
-      { error: "Failed to process repayment" },
+      { error: error instanceof Error ? error.message : "Failed to record payment" },
       { status: 500 }
     );
   }
 }
+

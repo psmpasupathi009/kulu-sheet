@@ -74,7 +74,7 @@ export default function SavingsPage() {
                 <TableHead>S.No</TableHead>
                 <TableHead>Member Name</TableHead>
                 <TableHead>User ID</TableHead>
-                <TableHead>Total Savings</TableHead>
+                <TableHead className="text-right">Total Savings</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -91,7 +91,9 @@ export default function SavingsPage() {
                     <TableCell>{index + 1}</TableCell>
                     <TableCell className="font-medium">{saving.member.name}</TableCell>
                     <TableCell>{saving.member.userId}</TableCell>
-                    <TableCell>₹{saving.totalAmount.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-semibold">
+                      ₹{Math.max(0, saving.totalAmount).toFixed(2)}
+                    </TableCell>
                     <TableCell>
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/dashbaord/savings/${saving.id}`}>View Details</Link>

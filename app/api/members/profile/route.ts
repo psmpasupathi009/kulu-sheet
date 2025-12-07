@@ -44,7 +44,13 @@ export async function GET(request: NextRequest) {
         },
         loans: {
           include: {
-            cycle: true,
+            group: {
+              select: {
+                id: true,
+                groupNumber: true,
+                name: true,
+              },
+            },
             transactions: {
               orderBy: { date: "desc" },
             },
@@ -55,7 +61,13 @@ export async function GET(request: NextRequest) {
           include: {
             collection: {
               include: {
-                cycle: true,
+                group: {
+                  select: {
+                    id: true,
+                    groupNumber: true,
+                    name: true,
+                  },
+                },
               },
             },
           },

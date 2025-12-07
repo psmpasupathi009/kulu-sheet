@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
         completedLoans,
         totalLoanAmount,
         totalRemainingLoans,
-        activeCycles,
+        activeGroups,
         totalCollections,
       ] = await Promise.all([
         prisma.member.count(),
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           _sum: { remaining: true },
           where: { status: "ACTIVE" },
         }),
-        prisma.loanCycle.count({
+        prisma.financingGroup.count({
           where: { isActive: true },
         }),
         prisma.monthlyCollection.count(),
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
           completedLoans: completedLoans,
           totalLoanAmount: totalLoanAmount._sum.principal || 0,
           totalRemainingLoans: totalRemainingLoans._sum.remaining || 0,
-          activeCycles: activeCycles,
+          activeGroups: activeGroups,
           totalCollections: totalCollections,
         },
         { status: 200 }

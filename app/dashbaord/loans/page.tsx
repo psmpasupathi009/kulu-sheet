@@ -6,7 +6,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
-import { Plus } from 'lucide-react'
 
 interface Loan {
   id: string
@@ -17,11 +16,12 @@ interface Loan {
   }
   principal: number
   remaining: number
-  currentWeek: number
-  weeks: number
+  currentMonth: number
+  months: number
   status: string
-  cycle?: {
-    cycleNumber: number
+  group?: {
+    groupNumber: number
+    name: string | null
   } | null
 }
 
@@ -59,14 +59,6 @@ export default function LoansPage() {
           <h1 className="text-2xl sm:text-3xl font-bold">Loan Details</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">View and manage loans</p>
         </div>
-        {user?.role === "ADMIN" && (
-          <Button asChild>
-            <Link href="/dashbaord/loans/give">
-              <Plus className="mr-2 h-4 w-4" />
-              Give Loan
-            </Link>
-          </Button>
-        )}
       </div>
 
       <Card>
@@ -83,8 +75,8 @@ export default function LoansPage() {
                 <TableHead>Principal</TableHead>
                 <TableHead>Remaining</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Week</TableHead>
-                <TableHead>Cycle</TableHead>
+                <TableHead>Month</TableHead>
+                <TableHead>Group</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -111,8 +103,8 @@ export default function LoansPage() {
                         {loan.status}
                       </span>
                     </TableCell>
-                    <TableCell>{loan.currentWeek}/{loan.weeks}</TableCell>
-                    <TableCell>{loan.cycle ? `#${loan.cycle.cycleNumber}` : '-'}</TableCell>
+                    <TableCell>{loan.currentMonth}/{loan.months}</TableCell>
+                    <TableCell>{loan.group ? `${loan.group.name || `Group ${loan.group.groupNumber}`}` : '-'}</TableCell>
                     <TableCell>
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/dashbaord/loans/${loan.id}`}>View Details</Link>

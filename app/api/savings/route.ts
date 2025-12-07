@@ -26,14 +26,51 @@ export async function GET(request: NextRequest) {
 
     const savings = await prisma.savings.findMany({
       include: {
-        member: true,
+        member: {
+          select: {
+            id: true,
+            name: true,
+            userId: true,
+          },
+        },
         transactions: {
-          orderBy: { date: 'desc' },
+          orderBy: { date: 'asc' }, // Order by date ascending to calculate running total correctly
         },
       },
     })
 
-    return NextResponse.json({ savings }, { status: 200 })
+    // Recalculate totals from transactions to ensure accuracy
+    // Only count positive transactions (contributions) - loans don't deduct from savings
+    const savingsWithRecalculatedTotals = await Promise.all(
+      savings.map(async (saving) => {
+        // Calculate total from positive transactions only (contributions)
+        // Negative transactions from old loan disbursement logic should be ignored
+        const calculatedTotal = saving.transactions.reduce((sum, t) => {
+          // Only add positive amounts (contributions)
+          // Negative amounts are from old loan disbursement logic and should be ignored
+          return sum + Math.max(0, t.amount || 0);
+        }, 0);
+        
+        // Ensure total is never negative (savings can't be negative)
+        const finalTotal = Math.max(0, calculatedTotal);
+        
+        // Always update to ensure consistency
+        if (Math.abs(finalTotal - saving.totalAmount) > 0.001) {
+          await prisma.savings.update({
+            where: { id: saving.id },
+            data: { totalAmount: finalTotal },
+          });
+        }
+        
+        return { 
+          ...saving, 
+          totalAmount: finalTotal,
+          member: saving.member,
+        };
+      })
+    );
+
+    return NextResponse.json({ savings: savingsWithRecalculatedTotals }, { status: 200 })
   } catch (error) {
     console.error('Error fetching savings:', error)
     return NextResponse.json(

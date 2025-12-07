@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     if (user.role === "ADMIN") {
       // Admin view: Get all financial data
-      const [savings, loans, collections, cycles] = await Promise.all([
+      const [savings, loans, collections, groups] = await Promise.all([
         prisma.savings.findMany({
           include: {
             member: {
@@ -45,16 +45,11 @@ export async function GET(request: NextRequest) {
                 userId: true,
               },
             },
-            cycle: {
+            group: {
               select: {
-                cycleNumber: true,
+                groupNumber: true,
+                name: true,
                 monthlyAmount: true,
-              },
-            },
-            sequence: {
-              select: {
-                month: true,
-                loanAmount: true,
               },
             },
           },
@@ -62,9 +57,10 @@ export async function GET(request: NextRequest) {
         }),
         prisma.monthlyCollection.findMany({
           include: {
-            cycle: {
+            group: {
               select: {
-                cycleNumber: true,
+                groupNumber: true,
+                name: true,
                 monthlyAmount: true,
                 totalMembers: true,
               },
@@ -83,10 +79,10 @@ export async function GET(request: NextRequest) {
           orderBy: { collectionDate: "desc" },
           take: 10, // Latest 10 collections
         }),
-        prisma.loanCycle.findMany({
+        prisma.financingGroup.findMany({
           where: { isActive: true },
           include: {
-            sequences: {
+            members: {
               include: {
                 member: {
                   select: {
@@ -94,15 +90,14 @@ export async function GET(request: NextRequest) {
                     userId: true,
                   },
                 },
-                loan: true,
               },
             },
             collections: {
               orderBy: { month: "desc" },
-              take: 3, // Latest 3 collections per cycle
+              take: 3, // Latest 3 collections per group
             },
           },
-          orderBy: { cycleNumber: "desc" },
+          orderBy: { groupNumber: "desc" },
         }),
       ]);
 
@@ -111,13 +106,12 @@ export async function GET(request: NextRequest) {
           savings,
           loans,
           collections,
-          cycles,
+          groups,
         },
         { status: 200 }
       );
     } else {
       // Regular user view: Get only their own data
-      // Get user's member record if userId exists
       let member = null;
       if (user.userId) {
         member = await prisma.member.findUnique({
@@ -131,13 +125,13 @@ export async function GET(request: NextRequest) {
             savings: [],
             loans: [],
             collections: [],
-            cycles: [],
+            groups: [],
           },
           { status: 200 }
         );
       }
 
-      const [savings, loans, collections, cycles] = await Promise.all([
+      const [savings, loans, collections, groups] = await Promise.all([
         prisma.savings.findMany({
           where: { memberId: member.id },
           include: {
@@ -164,16 +158,11 @@ export async function GET(request: NextRequest) {
                 userId: true,
               },
             },
-            cycle: {
+            group: {
               select: {
-                cycleNumber: true,
+                groupNumber: true,
+                name: true,
                 monthlyAmount: true,
-              },
-            },
-            sequence: {
-              select: {
-                month: true,
-                loanAmount: true,
               },
             },
           },
@@ -188,9 +177,10 @@ export async function GET(request: NextRequest) {
             },
           },
           include: {
-            cycle: {
+            group: {
               select: {
-                cycleNumber: true,
+                groupNumber: true,
+                name: true,
                 monthlyAmount: true,
                 totalMembers: true,
               },
@@ -212,17 +202,17 @@ export async function GET(request: NextRequest) {
           orderBy: { collectionDate: "desc" },
           take: 10,
         }),
-        prisma.loanCycle.findMany({
+        prisma.financingGroup.findMany({
           where: {
             isActive: true,
-            sequences: {
+            members: {
               some: {
                 memberId: member.id,
               },
             },
           },
           include: {
-            sequences: {
+            members: {
               where: {
                 memberId: member.id,
               },
@@ -233,7 +223,6 @@ export async function GET(request: NextRequest) {
                     userId: true,
                   },
                 },
-                loan: true,
               },
             },
             collections: {
@@ -241,7 +230,7 @@ export async function GET(request: NextRequest) {
               take: 3,
             },
           },
-          orderBy: { cycleNumber: "desc" },
+          orderBy: { groupNumber: "desc" },
         }),
       ]);
 
@@ -250,7 +239,7 @@ export async function GET(request: NextRequest) {
           savings,
           loans,
           collections,
-          cycles,
+          groups,
         },
         { status: 200 }
       );
@@ -263,4 +252,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

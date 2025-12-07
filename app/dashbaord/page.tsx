@@ -40,7 +40,7 @@ interface DashboardStats {
   completedLoans: number;
   totalLoanAmount: number;
   totalRemainingLoans: number;
-  activeCycles?: number;
+  activeGroups?: number;
   totalCollections?: number;
 }
 
@@ -71,13 +71,9 @@ interface LoanData {
   remaining: number;
   status: string;
   disbursedAt: string | null;
-  cycle?: {
-    cycleNumber: number;
-    monthlyAmount: number;
-  } | null;
-  sequence?: {
-    month: number;
-    loanAmount: number;
+  group?: {
+    groupNumber: number;
+    name: string | null;
   } | null;
 }
 
@@ -88,8 +84,9 @@ interface CollectionData {
   totalCollected: number;
   expectedAmount: number;
   isCompleted: boolean;
-  cycle: {
-    cycleNumber: number;
+  group: {
+    groupNumber: number;
+    name: string | null;
     monthlyAmount: number;
     totalMembers: number;
   };
@@ -106,26 +103,12 @@ interface CollectionData {
 
 interface CycleData {
   id: string;
-  cycleNumber: number;
+  groupNumber: number;
+  name?: string | null;
   startDate: string;
   monthlyAmount: number;
   totalMembers: number;
   isActive: boolean;
-  sequences: Array<{
-    id: string;
-    month: number;
-    loanAmount: number;
-    status: string;
-    member: {
-      name: string;
-      userId: string;
-    };
-    loan: {
-      id: string;
-      status: string;
-      remaining: number;
-    } | null;
-  }>;
 }
 
 export default function DashboardPage() {
@@ -133,12 +116,12 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"savings" | "loans" | "collections" | "cycles">("savings");
+  const [activeTab, setActiveTab] = useState<"savings" | "loans" | "collections" | "groups">("savings");
   const [financialData, setFinancialData] = useState<{
     savings: SavingsData[];
     loans: LoanData[];
     collections: CollectionData[];
-    cycles: CycleData[];
+    groups: CycleData[];
   } | null>(null);
 
   useEffect(() => {
@@ -258,13 +241,13 @@ export default function DashboardPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Active Cycles
+                    Active Groups
                   </CardTitle>
                   <RotateCcw className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {stats.activeCycles || 0}
+                    {stats.activeGroups || 0}
                   </div>
                 </CardContent>
               </Card>
@@ -357,7 +340,7 @@ export default function DashboardPage() {
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}>
                   <PiggyBank className="inline h-4 w-4 mr-2" />
-                  Savings ({financialData.savings.length})
+                  Savings ({financialData?.savings?.length || 0})
                 </button>
                 <button
                   onClick={() => setActiveTab("loans")}
@@ -367,7 +350,7 @@ export default function DashboardPage() {
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}>
                   <CreditCard className="inline h-4 w-4 mr-2" />
-                  Loans ({financialData.loans.length})
+                  Loans ({financialData?.loans?.length || 0})
                 </button>
                 <button
                   onClick={() => setActiveTab("collections")}
@@ -377,18 +360,18 @@ export default function DashboardPage() {
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}>
                   <Calendar className="inline h-4 w-4 mr-2" />
-                  Collections ({financialData.collections.length})
+                  Collections ({financialData?.collections?.length || 0})
                 </button>
                 {isAdmin && (
                   <button
-                    onClick={() => setActiveTab("cycles")}
+                    onClick={() => setActiveTab("groups")}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === "cycles"
+                      activeTab === "groups"
                         ? "border-primary text-primary"
                         : "border-transparent text-muted-foreground hover:text-foreground"
                     }`}>
                     <RotateCcw className="inline h-4 w-4 mr-2" />
-                    Cycles ({financialData.cycles.length})
+                    Groups ({financialData.groups?.length || 0})
                   </button>
                 )}
           </div>
@@ -408,7 +391,7 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {financialData.savings.length === 0 ? (
+                  {!financialData?.savings || financialData.savings.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={isAdmin ? 5 : 4} className="h-24 text-center text-muted-foreground">
                         No savings records found
@@ -462,13 +445,13 @@ export default function DashboardPage() {
                     <TableHead>Loan Amount</TableHead>
                     <TableHead>Remaining</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Cycle</TableHead>
+                    <TableHead>Group</TableHead>
                     <TableHead>Disbursed</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {financialData.loans.length === 0 ? (
+                  {!financialData?.loans || financialData.loans.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={isAdmin ? 7 : 6} className="h-24 text-center text-muted-foreground">
                         No loans found
@@ -508,8 +491,10 @@ export default function DashboardPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          {loan.cycle ? (
-                            <span className="text-muted-foreground">Cycle {loan.cycle.cycleNumber}</span>
+                          {loan.group ? (
+                            <span className="text-muted-foreground">
+                              {loan.group.name || `Group ${loan.group.groupNumber}`}
+                            </span>
                           ) : (
                             "-"
                           )}
@@ -539,7 +524,7 @@ export default function DashboardPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Cycle</TableHead>
+                    <TableHead>Group</TableHead>
                     <TableHead>Month</TableHead>
                     <TableHead>Collection Date</TableHead>
                     <TableHead>Expected</TableHead>
@@ -549,7 +534,7 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {financialData.collections.length === 0 ? (
+                  {!financialData?.collections || financialData.collections.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={isAdmin ? 7 : 6} className="h-24 text-center text-muted-foreground">
                         No collections found
@@ -559,7 +544,7 @@ export default function DashboardPage() {
                     financialData.collections.map((collection) => (
                       <TableRow key={collection.id}>
                         <TableCell className="font-medium">
-                          Cycle {collection.cycle.cycleNumber}
+                          {collection.group.name || `Group ${collection.group.groupNumber}`}
                         </TableCell>
                         <TableCell>Month {collection.month}</TableCell>
                         <TableCell className="text-muted-foreground">
@@ -581,7 +566,7 @@ export default function DashboardPage() {
                         </TableCell>
                         {isAdmin && (
                           <TableCell className="text-muted-foreground">
-                            {collection.payments.filter((p) => p.status === "PAID").length} / {collection.cycle.totalMembers}
+                            {collection.payments.filter((p) => p.status === "PAID").length} / {collection.group.totalMembers}
                           </TableCell>
                         )}
                       </TableRow>
@@ -592,11 +577,11 @@ export default function DashboardPage() {
             )}
 
             {/* Cycles Table (Admin Only) */}
-            {activeTab === "cycles" && isAdmin && (
+            {activeTab === "groups" && isAdmin && (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Cycle #</TableHead>
+                    <TableHead>Group #</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>Members</TableHead>
                     <TableHead>Monthly Amount</TableHead>
@@ -606,36 +591,36 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {financialData.cycles.length === 0 ? (
+                  {!financialData.groups || financialData.groups.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                        No active cycles found
+                        No active groups found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    financialData.cycles.map((cycle) => {
-                      const pooledAmount = cycle.monthlyAmount * cycle.totalMembers;
+                    financialData.groups.map((group) => {
+                      const pooledAmount = group.monthlyAmount * group.totalMembers;
                       return (
-                        <TableRow key={cycle.id}>
+                        <TableRow key={group.id}>
                           <TableCell className="font-medium">
-                            Cycle {cycle.cycleNumber}
+                            {group.name || `Group ${group.groupNumber}`}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
-                            {format(new Date(cycle.startDate), "dd MMM yyyy")}
+                            {format(new Date(group.startDate), "dd MMM yyyy")}
                           </TableCell>
-                          <TableCell>{cycle.totalMembers}</TableCell>
-                          <TableCell>₹{cycle.monthlyAmount.toFixed(2)}</TableCell>
+                          <TableCell>{group.totalMembers}</TableCell>
+                          <TableCell>₹{group.monthlyAmount.toFixed(2)}</TableCell>
                           <TableCell className="font-semibold">
                             ₹{pooledAmount.toFixed(2)}
                           </TableCell>
                           <TableCell>
                             <span
                               className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                cycle.isActive
+                                group.isActive
                                   ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
                                   : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
                               }`}>
-                              {cycle.isActive ? "Active" : "Inactive"}
+                              {group.isActive ? "Active" : "Inactive"}
                             </span>
                           </TableCell>
                           <TableCell className="text-right">

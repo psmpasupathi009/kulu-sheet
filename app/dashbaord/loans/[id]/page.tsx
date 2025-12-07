@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/field";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Calendar, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Calendar, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { generatePaymentSchedule } from "@/lib/utils";
@@ -47,16 +47,13 @@ interface Loan {
     name: string;
     userId: string;
   };
-  cycle?: {
-    cycleNumber: number;
-    startDate: string;
+  group?: {
+    id: string;
+    groupNumber: number;
+    name: string | null;
     totalMembers: number;
     monthlyAmount: number;
-  } | null;
-  sequence?: {
-    month: number;
-    loanAmount: number;
-    status: string;
+    startDate: string;
   } | null;
   principal: number;
   remaining: number;
@@ -64,7 +61,6 @@ interface Loan {
   months: number;
   status: string;
   totalPrincipalPaid: number;
-  latePaymentPenalty: number;
   disbursedAt?: string | null;
   completedAt?: string | null;
   guarantor1?: {
@@ -101,69 +97,11 @@ export default function LoanDetailPage() {
   const [showSchedule, setShowSchedule] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     paymentDate: new Date().toISOString().split("T")[0],
-    isLate: false,
-    overdueMonths: 0,
     paymentMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
   });
 
-  // Calculate monthly payment amount based on loan (no interest)
-  const calculateMonthlyPayment = (loan: Loan) => {
-    if (!loan) return { principal: 0, total: 0 };
-    const monthlyPrincipal = loan.principal / loan.months;
-    return {
-      principal: monthlyPrincipal,
-      total: monthlyPrincipal,
-    };
-  };
-
-  // Calculate missed months and penalties
-  const calculateMissedMonths = (loan: Loan) => {
-    if (!loan || !loan.disbursedAt)
-      return {
-        missedMonths: 0,
-        expectedMonth: loan?.currentMonth || 0,
-        isLate: false,
-      };
-
-    const disbursedDate = new Date(loan.disbursedAt);
-    const today = new Date();
-    const monthsSinceDisbursal = Math.floor(
-      (today.getTime() - disbursedDate.getTime()) / (30 * 24 * 60 * 60 * 1000)
-    );
-    const expectedMonth = monthsSinceDisbursal + 1;
-    const missedMonths = Math.max(0, expectedMonth - loan.currentMonth - 1);
-
-    // Calculate penalty for missed months (no interest)
-    let accumulatedPenalty = 0;
-    if (missedMonths > 0) {
-      let tempRemaining = loan.remaining;
-      for (let i = 0; i < missedMonths; i++) {
-        accumulatedPenalty += (tempRemaining * 0.5) / 100;
-      }
-    }
-
-    return {
-      missedMonths,
-      expectedMonth,
-      isLate: missedMonths > 0,
-      accumulatedPenalty,
-      totalPenalty: accumulatedPenalty,
-    };
-  };
-
-  const monthlyPayment = loan
-    ? calculateMonthlyPayment(loan)
-    : { principal: 0, total: 0 };
-
-  const missedMonthsInfo = loan
-    ? calculateMissedMonths(loan)
-    : {
-        missedMonths: 0,
-        expectedMonth: 0,
-        isLate: false,
-        accumulatedPenalty: 0,
-        totalPenalty: 0,
-      };
+  // Simple monthly payment calculation: principal / months (no interest, no penalties)
+  const monthlyPayment = loan ? loan.principal / loan.months : 0;
 
   useEffect(() => {
     if (params.id) {
@@ -196,32 +134,16 @@ export default function LoanDetailPage() {
         body: JSON.stringify({
           loanId: loan.id,
           paymentDate: paymentForm.paymentDate,
-          isLate: paymentForm.isLate,
-          overdueMonths: paymentForm.overdueMonths,
           paymentMethod: paymentForm.paymentMethod || undefined,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        let successMessage = `Payment of ₹${data.payment.total.toFixed(
-          2
-        )} recorded successfully!`;
-
-        if (data.payment.missedMonths > 0) {
-          successMessage += `\n⚠️ ${
-            data.payment.missedMonths
-          } month(s) missed - Penalty: ₹${data.payment.latePenalty.toFixed(
-            2
-          )} included.`;
-        }
-
-        toast.success(successMessage);
+        toast.success(data.message || `Monthly payment of ₹${data.payment.amount.toFixed(2)} recorded successfully!`);
         setShowPaymentForm(false);
         setPaymentForm({
           paymentDate: new Date().toISOString().split("T")[0],
-          isLate: false,
-          overdueMonths: 0,
           paymentMethod: "",
         });
         // Refresh loan data
@@ -330,40 +252,14 @@ export default function LoanDetailPage() {
               </span>
             </div>
             {loan.status === "ACTIVE" && loan.remaining > 0 && (
-              <>
-                {missedMonthsInfo.missedMonths > 0 && (
-                  <div className="flex justify-between border-t pt-2 mt-2 items-center">
-                    <span className="font-semibold text-red-600">
-                      <AlertTriangle className="h-4 w-4 inline mr-1" />
-                      Missed Months:
-                    </span>
-                    <span className="font-bold text-lg text-red-600">
-                      {missedMonthsInfo.missedMonths} month(s)
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between border-t pt-2 mt-2">
-                  <span className="text-muted-foreground font-semibold">
-                    Monthly Payment:
-                  </span>
-                  <span
-                    className={`font-bold text-lg ${
-                      missedMonthsInfo.missedMonths > 0
-                        ? "text-red-600"
-                        : "text-blue-600"
-                    }`}>
-                    ₹
-                    {(
-                      monthlyPayment.total + (missedMonthsInfo.totalPenalty ?? 0)
-                    ).toFixed(2)}
-                    {missedMonthsInfo.missedMonths > 0 && (
-                      <span className="text-xs text-muted-foreground ml-1">
-                        (includes penalty)
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </>
+              <div className="flex justify-between border-t pt-2 mt-2">
+                <span className="text-muted-foreground font-semibold">
+                  Monthly Payment:
+                </span>
+                <span className="font-bold text-lg text-blue-600">
+                  ₹{monthlyPayment.toFixed(2)}
+                </span>
+              </div>
             )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Status:</span>
@@ -380,18 +276,28 @@ export default function LoanDetailPage() {
                 {loan.status}
               </span>
             </div>
-            <div className="flex justify-between">
-            </div>
-            {loan.cycle && (
+            {loan.group && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Cycle:</span>
-                <span className="font-medium">#{loan.cycle.cycleNumber}</span>
+                <span className="text-muted-foreground">Financing Group:</span>
+                <span className="font-medium">
+                  {loan.group.name || `Group #${loan.group.groupNumber}`}
+                </span>
               </div>
             )}
-            {loan.sequence && (
+            {loan.disbursedAt && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Rotation Month:</span>
-                <span className="font-medium">Month {loan.sequence.month}</span>
+                <span className="text-muted-foreground">Disbursed:</span>
+                <span className="font-medium">
+                  {format(new Date(loan.disbursedAt), "dd/MM/yyyy")}
+                </span>
+              </div>
+            )}
+            {loan.completedAt && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Completed:</span>
+                <span className="font-medium">
+                  {format(new Date(loan.completedAt), "dd/MM/yyyy")}
+                </span>
               </div>
             )}
           </CardContent>
@@ -410,14 +316,6 @@ export default function LoanDetailPage() {
                 ₹{loan.totalPrincipalPaid.toFixed(2)}
               </span>
             </div>
-            {loan.latePaymentPenalty > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Late Penalty:</span>
-                <span className="font-medium text-red-600">
-                  ₹{loan.latePaymentPenalty.toFixed(2)}
-                </span>
-              </div>
-            )}
             {loan.guarantor1 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Guarantor 1:</span>
@@ -444,107 +342,53 @@ export default function LoanDetailPage() {
                       <CardTitle className="text-lg">Record Payment</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {missedMonthsInfo.missedMonths > 0 && (
-                        <div className="p-4 border border-destructive rounded-md bg-destructive/10 mb-3">
-                          <div className="flex items-start gap-2">
-                            <AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
-                            <div className="flex-1">
-                              <div className="font-semibold mb-1 text-destructive">
-                                ⚠️ {missedMonthsInfo.missedMonths} Month(s) Missed Payment
-                              </div>
-                              <div className="text-sm space-y-1 text-destructive">
-                                <div>
-                                  Expected Month: {missedMonthsInfo.expectedMonth} |
-                                  Current: {loan.currentMonth + 1}
-                                </div>
-                                <div>
-                                  Accumulated Interest: ₹0.00 (No interest)
-                                </div>
-                                <div>
-                                  Late Penalty: ₹
-                                  {(missedMonthsInfo.accumulatedPenalty ?? 0).toFixed(2)}{" "}
-                                  (0.5% per month)
-                                </div>
-                                <div className="font-semibold mt-1">
-                                  Additional Amount Due: ₹
-                                  {(missedMonthsInfo.totalPenalty ?? 0).toFixed(2)}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div
-                        className={`p-3 rounded-lg border ${
-                          missedMonthsInfo.missedMonths > 0
-                            ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                            : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                        }`}>
-                        <div
-                          className={`text-sm font-semibold mb-2 ${
-                            missedMonthsInfo.missedMonths > 0
-                              ? "text-red-900 dark:text-red-100"
-                              : "text-blue-900 dark:text-blue-100"
-                          }`}>
-                          Payment Breakdown
+                      <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                        <div className="text-sm font-semibold mb-2 text-blue-900 dark:text-blue-100">
+                          Payment Details
                         </div>
                         <div className="space-y-1 text-sm">
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">
-                              Principal:
+                              Monthly Payment:
                             </span>
                             <span className="font-medium">
-                              ₹{monthlyPayment.principal.toFixed(2)}
+                              ₹{monthlyPayment.toFixed(2)}
                             </span>
                           </div>
-                          {missedMonthsInfo.missedMonths > 0 && (
-                            <>
-                              <div className="flex justify-between text-red-600">
-                                <span className="text-muted-foreground">
-                                  Accumulated Interest:
-                                </span>
-                                <span className="font-medium">
-                                  ₹0.00 (No interest)
-                                </span>
-                              </div>
-                              <div className="flex justify-between text-red-600">
-                                <span className="text-muted-foreground">
-                                  Late Penalty:
-                                </span>
-                                <span className="font-medium">
-                                  ₹
-                                  {(missedMonthsInfo.accumulatedPenalty ?? 0).toFixed(
-                                    2
-                                  )}
-                                </span>
-                              </div>
-                            </>
-                          )}
-                          <div className="flex justify-between border-t pt-1 mt-1">
-                            <span className="font-semibold">
-                              Total Payment:
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              Progress:
                             </span>
-                            <span
-                              className={`font-bold ${
-                                missedMonthsInfo.missedMonths > 0
-                                  ? "text-red-600"
-                                  : "text-blue-600"
-                              }`}>
-                              ₹
-                              {(
-                                monthlyPayment.total +
-                                (missedMonthsInfo.totalPenalty ?? 0)
-                              ).toFixed(2)}
+                            <span className="font-medium">
+                              {loan.currentMonth}/{loan.months} months
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              Remaining:
+                            </span>
+                            <span className="font-medium">
+                              ₹{loan.remaining.toFixed(2)}
                             </span>
                           </div>
                         </div>
-                        <FieldDescription className="mt-2">
-                          {missedMonthsInfo.missedMonths > 0
-                            ? "Penalties for missed months are automatically included"
-                            : "This amount will be automatically calculated and recorded"}
-                        </FieldDescription>
                       </div>
+                      <Field>
+                        <FieldLabel htmlFor="amount">
+                          Payment Amount
+                        </FieldLabel>
+                        <Input
+                          id="amount"
+                          type="number"
+                          step="0.01"
+                          value={monthlyPayment.toFixed(2)}
+                          disabled
+                          className="font-semibold"
+                        />
+                        <FieldDescription className="mt-2">
+                          Monthly payment amount (Principal / Duration)
+                        </FieldDescription>
+                      </Field>
                       <Field>
                         <FieldLabel htmlFor="paymentDate">
                           <Calendar className="mr-2 h-4 w-4 inline" />
@@ -562,49 +406,6 @@ export default function LoanDetailPage() {
                           }
                         />
                       </Field>
-                      <Field>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={paymentForm.isLate}
-                            onChange={(e) =>
-                              setPaymentForm({
-                                ...paymentForm,
-                                isLate: e.target.checked,
-                                overdueMonths: e.target.checked
-                                  ? paymentForm.overdueMonths
-                                  : 0,
-                              })
-                            }
-                            className="rounded"
-                          />
-                          <span className="text-sm">
-                            This is a late payment
-                          </span>
-                        </label>
-                      </Field>
-                      {paymentForm.isLate && (
-                        <Field>
-                          <FieldLabel htmlFor="overdueMonths">
-                            Overdue Months
-                          </FieldLabel>
-                          <Input
-                            id="overdueMonths"
-                            type="number"
-                            min="0"
-                            value={paymentForm.overdueMonths}
-                            onChange={(e) =>
-                              setPaymentForm({
-                                ...paymentForm,
-                                overdueMonths: parseInt(e.target.value) || 0,
-                              })
-                            }
-                          />
-                          <FieldDescription>
-                            Number of months overdue (0.5% penalty per week)
-                          </FieldDescription>
-                        </Field>
-                      )}
                       <Field>
                         <FieldLabel htmlFor="paymentMethod">
                           Payment Method (Optional)

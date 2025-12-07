@@ -26,7 +26,7 @@ export async function GET(
       include: {
         member: true,
         transactions: {
-          orderBy: { date: 'desc' },
+          orderBy: { date: 'asc' }, // Order by date ascending to calculate correctly
         },
       },
     })
@@ -35,7 +35,32 @@ export async function GET(
       return NextResponse.json({ error: 'Savings not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ savings }, { status: 200 })
+    // Recalculate total from positive transactions only (contributions)
+    // Negative transactions from old loan disbursement logic should be ignored
+    const calculatedTotal = savings.transactions.reduce((sum, t) => {
+      // Only add positive amounts (contributions)
+      return sum + Math.max(0, t.amount || 0);
+    }, 0);
+    const finalTotal = Math.max(0, calculatedTotal); // Ensure never negative
+    
+    // Always update to ensure consistency
+    if (Math.abs(finalTotal - savings.totalAmount) > 0.001) {
+      await prisma.savings.update({
+        where: { id },
+        data: { totalAmount: finalTotal },
+      });
+    }
+
+    // Return with recalculated total and transactions ordered by date desc for display
+    const savingsWithCorrectTotal = {
+      ...savings,
+      totalAmount: finalTotal,
+      transactions: [...savings.transactions].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      ),
+    };
+
+    return NextResponse.json({ savings: savingsWithCorrectTotal }, { status: 200 })
   } catch (error) {
     console.error('Error fetching savings:', error)
     return NextResponse.json(

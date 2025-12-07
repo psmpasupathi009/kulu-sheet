@@ -3,13 +3,6 @@ import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-
-const updateLoanSchema = z.object({
-  status: z.enum(["PENDING", "ACTIVE", "COMPLETED", "DEFAULTED"]).optional(),
-  guarantor1Id: z.string().optional(),
-  guarantor2Id: z.string().optional(),
-});
 
 export async function GET(
   request: NextRequest,
@@ -32,11 +25,35 @@ export async function GET(
     const loan = await prisma.loan.findUnique({
       where: { id },
       include: {
-        member: true,
-        cycle: true,
-        sequence: true,
-        guarantor1: true,
-        guarantor2: true,
+        member: {
+          select: {
+            id: true,
+            name: true,
+            userId: true,
+          },
+        },
+        group: {
+          select: {
+            id: true,
+            groupNumber: true,
+            name: true,
+            totalMembers: true,
+            monthlyAmount: true,
+            startDate: true,
+          },
+        },
+        guarantor1: {
+          select: {
+            name: true,
+            userId: true,
+          },
+        },
+        guarantor2: {
+          select: {
+            name: true,
+            userId: true,
+          },
+        },
         transactions: {
           orderBy: { date: "desc" },
         },
@@ -44,7 +61,24 @@ export async function GET(
     });
 
     if (!loan) {
-      return NextResponse.json({ error: "Loan not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Loan not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check authorization - users can only see their own loans unless admin
+    if (user.role !== "ADMIN") {
+      const member = await prisma.member.findUnique({
+        where: { userId: user.userId || "" },
+      });
+
+      if (!member || loan.memberId !== member.id) {
+        return NextResponse.json(
+          { error: "Forbidden - You can only view your own loans" },
+          { status: 403 }
+        );
+      }
     }
 
     return NextResponse.json({ loan }, { status: 200 });
@@ -56,6 +90,11 @@ export async function GET(
     );
   }
 }
+
+const updateLoanSchema = z.object({
+  status: z.enum(["PENDING", "ACTIVE", "COMPLETED", "DEFAULTED"]).optional(),
+  reason: z.string().optional(),
+});
 
 export async function PUT(
   request: NextRequest,
@@ -81,35 +120,37 @@ export async function PUT(
     const body = await request.json();
     const data = updateLoanSchema.parse(body);
 
-    const updateData: Prisma.LoanUpdateInput = {};
-    if (data.status) updateData.status = data.status;
-    if (data.guarantor1Id !== undefined) {
-      updateData.guarantor1 = data.guarantor1Id
-        ? { connect: { id: data.guarantor1Id } }
-        : { disconnect: true };
-    }
-    if (data.guarantor2Id !== undefined) {
-      updateData.guarantor2 = data.guarantor2Id
-        ? { connect: { id: data.guarantor2Id } }
-        : { disconnect: true };
-    }
-
-    const loan = await prisma.loan.update({
+    const loan = await prisma.loan.findUnique({
       where: { id },
-      data: updateData,
-      include: {
-        member: true,
-        cycle: true,
-        sequence: true,
-        guarantor1: true,
-        guarantor2: true,
-        transactions: {
-          orderBy: { date: "desc" },
-        },
-      },
     });
 
-    return NextResponse.json({ loan }, { status: 200 });
+    if (!loan) {
+      return NextResponse.json(
+        { error: "Loan not found" },
+        { status: 404 }
+      );
+    }
+
+    const updateData: any = {};
+    if (data.status !== undefined) {
+      updateData.status = data.status;
+      if (data.status === "COMPLETED" && !loan.completedAt) {
+        updateData.completedAt = new Date();
+      }
+    }
+    if (data.reason !== undefined) {
+      updateData.reason = data.reason;
+    }
+
+    const updatedLoan = await prisma.loan.update({
+      where: { id },
+      data: updateData,
+    });
+
+    return NextResponse.json(
+      { loan: updatedLoan, message: "Loan updated successfully" },
+      { status: 200 }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -125,3 +166,4 @@ export async function PUT(
     );
   }
 }
+

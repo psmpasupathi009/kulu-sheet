@@ -12,11 +12,42 @@ import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
+import { format, addMonths } from 'date-fns'
 
 interface Member {
   id: string
   name: string
   userId: string
+}
+
+interface FinancingGroup {
+  id: string
+  groupNumber: number
+  name: string | null
+  monthlyAmount: number
+  totalMembers: number
+  isActive: boolean
+  currentMonth: number
+  startDate: string
+  collections: Array<{
+    id: string
+    month: number
+    collectionDate: string
+    isCompleted: boolean
+    loanDisbursed: boolean
+    payments: Array<{
+      memberId: string
+      status: string
+    }>
+  }>
+  members: Array<{
+    memberId: string
+    member: {
+      id: string
+      name: string
+      userId: string
+    }
+  }>
 }
 
 export default function NewSavingsPage() {
@@ -25,6 +56,9 @@ export default function NewSavingsPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
   const [isMonthlyContribution, setIsMonthlyContribution] = useState(false)
+  const [financingGroups, setFinancingGroups] = useState<FinancingGroup[]>([])
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("")
+  const [selectedMonth, setSelectedMonth] = useState<number>(0)
   const [formData, setFormData] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -34,7 +68,10 @@ export default function NewSavingsPage() {
 
   useEffect(() => {
     fetchMembers()
-  }, [])
+    if (isMonthlyContribution) {
+      fetchFinancingGroups()
+    }
+  }, [isMonthlyContribution])
 
   const fetchMembers = async () => {
     try {
@@ -50,6 +87,87 @@ export default function NewSavingsPage() {
     }
   }
 
+  const fetchFinancingGroups = async () => {
+    try {
+      const response = await fetch('/api/financing-groups')
+      if (response.ok) {
+        const data = await response.json()
+        setFinancingGroups(data.groups.filter((g: FinancingGroup) => g.isActive))
+      }
+    } catch (error) {
+      console.error('Error fetching financing groups:', error)
+    }
+  }
+
+  const selectedGroup = financingGroups.find(g => g.id === selectedGroupId)
+  const availableMonths = selectedGroup 
+    ? Array.from({ length: selectedGroup.totalMembers }, (_, i) => i + 1)
+        .filter(month => {
+          const collection = selectedGroup.collections.find(c => c.month === month)
+          // Show months that don't have collections, or have incomplete collections that haven't disbursed loans
+          return !collection || (!collection.isCompleted || !collection.loanDisbursed)
+        })
+    : []
+  
+  // Get month name based on group start date
+  const getMonthName = (monthNumber: number) => {
+    if (!selectedGroup) return `Month ${monthNumber}`
+    const startDate = new Date(selectedGroup.startDate)
+    const monthDate = addMonths(startDate, monthNumber - 1)
+    return format(monthDate, 'MMMM yyyy')
+  }
+  
+  // Get unpaid members for selected month
+  const getUnpaidMembers = () => {
+    if (!selectedGroup || !selectedMonth) return members
+    
+    const collection = selectedGroup.collections.find(c => c.month === selectedMonth)
+    if (!collection) {
+      // If no collection exists, show all group members
+      return members.filter(m => 
+        selectedGroup.members.some(gm => gm.memberId === m.id)
+      )
+    }
+    
+    // Get members who have already paid
+    const paidMemberIds = collection.payments
+      .filter(p => p.status === 'PAID')
+      .map(p => p.memberId)
+    
+    // Return only group members who haven't paid
+    return members.filter(m => 
+      selectedGroup.members.some(gm => gm.memberId === m.id) &&
+      !paidMemberIds.includes(m.id)
+    )
+  }
+  
+  // Filter members to show only unpaid ones when monthly contribution is selected
+  const availableMembers = isMonthlyContribution && selectedGroup && selectedMonth
+    ? getUnpaidMembers()
+    : members
+  
+  // Auto-select date when month is selected
+  useEffect(() => {
+    if (selectedGroup && selectedMonth && isMonthlyContribution) {
+      const collection = selectedGroup.collections.find(c => c.month === selectedMonth)
+      if (collection) {
+        // Use collection date if it exists
+        setFormData(prev => ({
+          ...prev,
+          date: new Date(collection.collectionDate).toISOString().split('T')[0]
+        }))
+      } else {
+        // Calculate date from group start date + month offset
+        const startDate = new Date(selectedGroup.startDate)
+        const monthDate = addMonths(startDate, selectedMonth - 1)
+        setFormData(prev => ({
+          ...prev,
+          date: format(monthDate, 'yyyy-MM-dd')
+        }))
+      }
+    }
+  }, [selectedMonth, selectedGroup, isMonthlyContribution])
+
   const toggleMemberSelection = (memberId: string) => {
     setSelectedMemberIds((prev) =>
       prev.includes(memberId)
@@ -59,10 +177,14 @@ export default function NewSavingsPage() {
   }
 
   const toggleSelectAll = () => {
-    if (selectedMemberIds.length === members.length) {
+    const membersToUse = isMonthlyContribution && selectedGroup && selectedMonth
+      ? getUnpaidMembers()
+      : members
+    
+    if (selectedMemberIds.length === membersToUse.length && membersToUse.length > 0) {
       setSelectedMemberIds([])
     } else {
-      setSelectedMemberIds(members.map((m) => m.id))
+      setSelectedMemberIds(membersToUse.map((m) => m.id))
     }
   }
 
@@ -82,33 +204,80 @@ export default function NewSavingsPage() {
       return
     }
 
+    if (isMonthlyContribution) {
+      if (!selectedGroupId) {
+        toast.error('Please select a financing group')
+        setSubmitting(false)
+        return
+      }
+      if (!selectedMonth) {
+        toast.error('Please select a month')
+        setSubmitting(false)
+        return
+      }
+    }
+
     try {
-      // Record contribution for each selected member
-      const promises = selectedMemberIds.map((memberId) =>
-        fetch('/api/savings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            memberId: memberId,
-            amount: parseFloat(formData.amount),
-            date: formData.date,
-          }),
-        })
-      )
+      if (isMonthlyContribution && selectedGroupId && selectedMonth) {
+        // Record as collection payment (which also adds to savings)
+        const promises = selectedMemberIds.map((memberId) =>
+          fetch(`/api/financing-groups/${selectedGroupId}/collections`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              memberId: memberId,
+              amount: parseFloat(formData.amount),
+              paymentMethod: 'CASH',
+              month: selectedMonth,
+              collectionDate: formData.date,
+            }),
+          })
+        )
 
-      const responses = await Promise.all(promises)
-      const results = await Promise.all(responses.map((r) => r.json()))
+        const responses = await Promise.all(promises)
+        const results = await Promise.all(responses.map((r) => r.json()))
 
-      const failed = results.filter((r, i) => !responses[i].ok)
-      if (failed.length > 0) {
-        throw new Error(failed[0].error || 'Failed to record some contributions')
+        const failed = results.filter((r, i) => !responses[i].ok)
+        if (failed.length > 0) {
+          throw new Error(failed[0].error || 'Failed to record some contributions')
+        }
+
+        toast.success(
+          `₹${parseFloat(formData.amount).toFixed(2)} monthly contribution recorded for ${selectedMemberIds.length} member(s) in month ${selectedMonth}!`
+        )
+        
+        // Redirect to financing groups page to see the updated collection
+        setTimeout(() => {
+          router.push('/dashbaord/cycles')
+        }, 1500)
+        return
+      } else {
+        // Record as regular savings contribution
+        const promises = selectedMemberIds.map((memberId) =>
+          fetch('/api/savings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              memberId: memberId,
+              amount: parseFloat(formData.amount),
+              date: formData.date,
+            }),
+          })
+        )
+
+        const responses = await Promise.all(promises)
+        const results = await Promise.all(responses.map((r) => r.json()))
+
+        const failed = results.filter((r, i) => !responses[i].ok)
+        if (failed.length > 0) {
+          throw new Error(failed[0].error || 'Failed to record some contributions')
+        }
+
+        toast.success(
+          `₹${parseFloat(formData.amount).toFixed(2)} contribution recorded for ${selectedMemberIds.length} member(s) successfully!`
+        )
       }
 
-      const contributionType = isMonthlyContribution ? 'monthly' : 'contribution'
-      const amount = parseFloat(formData.amount).toFixed(2)
-      toast.success(
-        `₹${amount} ${contributionType} recorded for ${selectedMemberIds.length} member(s) successfully!`
-      )
       setTimeout(() => {
         router.push('/dashbaord/savings')
       }, 1500)
@@ -175,7 +344,13 @@ export default function NewSavingsPage() {
                   <Checkbox
                     id="isMonthlyContribution"
                     checked={isMonthlyContribution}
-                    onCheckedChange={(checked) => setIsMonthlyContribution(checked === true)}
+                    onCheckedChange={(checked) => {
+                      setIsMonthlyContribution(checked === true)
+                      if (!checked) {
+                        setSelectedGroupId("")
+                        setSelectedMonth(0)
+                      }
+                    }}
                   />
                   <div className="flex-1">
                     <Label
@@ -185,49 +360,114 @@ export default function NewSavingsPage() {
                     </Label>
                     <p className="text-xs text-muted-foreground mt-1">
                       {isMonthlyContribution 
-                        ? 'This is a monthly contribution'
-                        : 'Check this box if this is a monthly contribution'}
+                        ? 'This is a monthly contribution for a financing group'
+                        : 'Check this box if this is a monthly contribution for a financing group'}
                     </p>
                   </div>
                 </div>
               </Field>
 
+              {isMonthlyContribution && (
+                <>
+                  <Field>
+                    <FieldLabel>
+                      <Users className="mr-2 h-4 w-4 inline" />
+                      Select Financing Group <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <select
+                      value={selectedGroupId}
+                      onChange={(e) => {
+                        setSelectedGroupId(e.target.value)
+                        setSelectedMonth(0)
+                      }}
+                      required={isMonthlyContribution}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                      <option value="">Select financing group</option>
+                      {financingGroups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          Group {group.groupNumber} {group.name ? `- ${group.name}` : ''} (₹{group.monthlyAmount.toFixed(2)}/month, {group.totalMembers} members)
+                        </option>
+                      ))}
+                    </select>
+                    <FieldDescription>
+                      Select the financing group for this monthly contribution
+                    </FieldDescription>
+                  </Field>
+
+                  {selectedGroup && (
+                    <Field>
+                      <FieldLabel>
+                        <Calendar className="mr-2 h-4 w-4 inline" />
+                        Select Month <span className="text-destructive">*</span>
+                      </FieldLabel>
+                      <select
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                        required={isMonthlyContribution}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                        <option value={0}>Select month</option>
+                        {availableMonths.map((month) => (
+                          <option key={month} value={month}>
+                            {getMonthName(month)}
+                          </option>
+                        ))}
+                      </select>
+                      <FieldDescription>
+                        Select the month for this contribution
+                      </FieldDescription>
+                    </Field>
+                  )}
+                </>
+              )}
+
               <Field>
                 <FieldLabel>
                   <Users className="mr-2 h-4 w-4 inline" />
                   Select Members <span className="text-destructive">*</span>
+                  {isMonthlyContribution && selectedGroup && selectedMonth && (
+                    <span className="ml-2 text-xs text-blue-600 dark:text-blue-400 font-normal">
+                      (Showing only unpaid members)
+                    </span>
+                  )}
                 </FieldLabel>
                 <div className="border rounded-lg bg-card overflow-hidden">
                   {/* Select All Header - Fixed */}
                   <div className="flex items-center space-x-3 p-4 border-b bg-muted/30 sticky top-0 z-10">
                     <Checkbox
                       id="selectAll"
-                      checked={selectedMemberIds.length === members.length && members.length > 0}
+                      checked={selectedMemberIds.length === availableMembers.length && availableMembers.length > 0}
                       onCheckedChange={toggleSelectAll}
                     />
                     <Label
                       htmlFor="selectAll"
                       className="text-sm font-semibold leading-none cursor-pointer flex-1">
-                      {selectedMemberIds.length === members.length && members.length > 0
+                      {selectedMemberIds.length === availableMembers.length && availableMembers.length > 0
                         ? "Deselect All" 
                         : "Select All"}
                     </Label>
                     <span className="text-xs text-muted-foreground font-medium">
-                      {selectedMemberIds.length} / {members.length}
+                      {selectedMemberIds.length} / {availableMembers.length}
+                      {isMonthlyContribution && selectedGroup && selectedMonth && (
+                        <span className="ml-1 text-blue-600 dark:text-blue-400">
+                          (unpaid)
+                        </span>
+                      )}
                     </span>
                   </div>
 
                   {/* Scrollable Member List */}
                   <div className="max-h-[400px] overflow-y-auto">
-                    {members.length === 0 ? (
+                    {availableMembers.length === 0 ? (
                       <div className="p-8 text-center">
                         <p className="text-sm text-muted-foreground">
-                          No members found. Please create members first.
+                          {isMonthlyContribution && selectedGroup && selectedMonth
+                            ? "All members have already paid for this month."
+                            : "No members found. Please create members first."}
                         </p>
                       </div>
                     ) : (
                       <div className="p-2">
-                        {members.map((member) => (
+                        {availableMembers.map((member) => (
                           <div
                             key={member.id}
                             className={`flex items-center space-x-3 p-3 rounded-md transition-colors mb-1 ${
