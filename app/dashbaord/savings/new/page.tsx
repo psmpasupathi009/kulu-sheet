@@ -36,8 +36,15 @@ interface FinancingGroup {
     isCompleted: boolean
     loanDisbursed: boolean
     payments: Array<{
+      id: string
       memberId: string
+      amount: number
+      paymentDate: string
       status: string
+      member?: {
+        name: string
+        userId: string
+      }
     }>
   }>
   members: Array<{
@@ -78,6 +85,8 @@ export default function NewSavingsPage() {
     if (isMonthlyContribution && selectedGroupId && selectedMonth) {
       // Refresh data when month changes to get latest payment status
       fetchFinancingGroups()
+      // Clear selected members when month/group changes to avoid stale selections
+      setSelectedMemberIds([])
     }
   }, [selectedMonth, selectedGroupId, isMonthlyContribution])
 
@@ -145,11 +154,18 @@ export default function NewSavingsPage() {
       )
     }
     
-    // Get members who have already paid (check status case-insensitively)
+    // Get members who have already paid
+    // Check if payment exists and status is PAID (case-insensitive)
+    // Also check if payment has amount > 0 (consider it paid even if status is missing)
     const paidMemberIds = (collection.payments || [])
       .filter(p => {
-        const status = String(p.status || '').toUpperCase()
-        return status === 'PAID'
+        // Check status - must be explicitly PAID (case-insensitive)
+        const status = String(p.status || '').trim().toUpperCase()
+        // If payment exists with status PAID, or if payment has amount > 0 (consider it paid)
+        // This handles cases where status might not be set but payment exists
+        const isPaid = status === 'PAID' || (p.amount && p.amount > 0)
+        
+        return isPaid
       })
       .map(p => p.memberId)
     

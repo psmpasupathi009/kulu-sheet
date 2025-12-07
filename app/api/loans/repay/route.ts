@@ -120,6 +120,18 @@ export async function POST(request: NextRequest) {
     const isComplete = newCurrentMonth >= loan.months || newRemaining <= 0.01;
     const newStatus = isComplete ? "COMPLETED" : (loan.status === "PENDING" ? "ACTIVE" : loan.status);
 
+    // Get member to update savings
+    const member = await prisma.member.findUnique({
+      where: { id: loan.memberId },
+    });
+
+    if (!member) {
+      return NextResponse.json(
+        { error: "Member not found" },
+        { status: 404 }
+      );
+    }
+
     // Create transaction and update loan in a single transaction
     const result = await prisma.$transaction(async (tx) => {
       // Create loan transaction
@@ -146,7 +158,41 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return { transaction, loan: updatedLoan };
+      // Update savings: loan repayment increases savings
+      // Find or create savings record
+      // Use findFirst since memberId is not unique
+      let savings = await tx.savings.findFirst({
+        where: { memberId: loan.memberId },
+      });
+
+      if (!savings) {
+        savings = await tx.savings.create({
+          data: {
+            memberId: loan.memberId,
+            totalAmount: 0,
+          },
+        });
+      }
+
+      // Create savings transaction for loan repayment
+      const savingsTransaction = await tx.savingsTransaction.create({
+        data: {
+          savingsId: savings.id,
+          date: new Date(data.paymentDate),
+          amount: principalPayment, // Loan repayment increases savings
+          total: savings.totalAmount + principalPayment,
+        },
+      });
+
+      // Update savings total
+      await tx.savings.update({
+        where: { id: savings.id },
+        data: {
+          totalAmount: savings.totalAmount + principalPayment,
+        },
+      });
+
+      return { transaction, loan: updatedLoan, savingsTransaction };
     });
 
     return NextResponse.json(
