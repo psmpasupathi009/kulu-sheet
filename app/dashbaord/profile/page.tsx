@@ -70,7 +70,8 @@ interface MemberProfile {
     disbursedAt: string | null;
     completedAt: string | null;
     group: {
-      cycleNumber: number;
+      groupNumber: number;
+      name: string | null;
     } | null;
   }>;
 }

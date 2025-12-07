@@ -90,7 +90,7 @@ export async function POST(
 
     if (existingLoan) {
       return NextResponse.json(
-        { error: "This member has already received a loan in this group. Each member can receive only one loan per cycle." },
+        { error: "This member has already received a loan in this group. Each member can receive only one loan per financing group." },
         { status: 400 }
       );
     }
@@ -109,7 +109,7 @@ export async function POST(
             groupId: groupId,
             principal: loanAmount,
             remaining: loanAmount,
-            months: group.totalMembers, // Loan duration matches group cycle
+            months: group.totalMembers, // Loan duration matches financing group total members
             currentMonth: 0,
             status: "ACTIVE",
             disbursedAt: disbursedDate,
@@ -127,7 +127,7 @@ export async function POST(
           },
         });
 
-        // Check if all members have received loans (cycle complete)
+        // Check if all members have received loans (financing group cycle complete)
         // Count all loans (ACTIVE, COMPLETED, PENDING) for this group
         const loansGiven = await tx.loan.count({
           where: {

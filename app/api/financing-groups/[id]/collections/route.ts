@@ -71,7 +71,7 @@ export async function POST(
 
     if (nextMonth > group.totalMembers) {
       return NextResponse.json(
-        { error: `Group cycle is complete (${group.totalMembers} months)` },
+        { error: `Financing group cycle is complete (${group.totalMembers} months)` },
         { status: 400 }
       );
     }
