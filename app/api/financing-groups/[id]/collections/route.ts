@@ -284,11 +284,6 @@ export async function PUT(
       );
     }
 
-    // Check if member has already received a loan
-    // Members who received loans CAN still pay monthly contributions in subsequent months
-    // They just won't receive another loan - their payments count towards the collection
-    // The only restriction is: they can't receive a loan more than once per group
-    // So we allow them to pay, but they won't be eligible for future loans
     const memberLoan = await prisma.loan.findFirst({
       where: {
         groupId: groupId,
@@ -296,11 +291,6 @@ export async function PUT(
       },
     });
 
-    // No restriction on payments - members who received loans can still contribute
-    // Their payments will count towards the collection total for that month
-    // They just won't be eligible to receive another loan
-
-    // Check if payment already exists for this member and month
     const existingPayment = await prisma.collectionPayment.findUnique({
       where: {
         collectionId_memberId: {
