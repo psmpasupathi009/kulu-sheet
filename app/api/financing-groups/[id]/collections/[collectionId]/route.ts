@@ -146,8 +146,69 @@ export async function DELETE(
       );
     }
 
-    // Delete in transaction to handle cascades
+    // Delete in transaction to handle cascades and reverse savings
     await prisma.$transaction(async (tx) => {
+      // Reverse savings for all PAID payments before deleting
+      for (const payment of collection.payments) {
+        const status = String(payment.status || '').trim().toUpperCase();
+        if (status === 'PAID' && payment.amount > 0) {
+          // Find member's savings
+          const member = await tx.member.findUnique({
+            where: { id: payment.memberId },
+            include: { savings: true },
+          });
+
+          if (member && member.savings.length > 0) {
+            const savings = member.savings[0];
+            
+            // Find and delete the savings transaction for this payment
+            // Look for transactions on the same date or around the payment date
+            const savingsTransactions = await tx.savingsTransaction.findMany({
+              where: {
+                savingsId: savings.id,
+                amount: payment.amount,
+                date: {
+                  gte: new Date(new Date(payment.paymentDate).setHours(0, 0, 0, 0)),
+                  lte: new Date(new Date(payment.paymentDate).setHours(23, 59, 59, 999)),
+                },
+              },
+              orderBy: { date: 'desc' },
+            });
+
+            // Delete matching savings transactions
+            if (savingsTransactions.length > 0) {
+              await tx.savingsTransaction.deleteMany({
+                where: {
+                  id: { in: savingsTransactions.map(t => t.id) },
+                },
+              });
+
+              // Recalculate savings total from remaining transactions
+              const remainingTransactions = await tx.savingsTransaction.findMany({
+                where: { savingsId: savings.id },
+                orderBy: { date: 'asc' },
+              });
+
+              // Recalculate running totals
+              let runningTotal = 0;
+              for (const trans of remainingTransactions) {
+                runningTotal += trans.amount;
+                await tx.savingsTransaction.update({
+                  where: { id: trans.id },
+                  data: { total: runningTotal },
+                });
+              }
+
+              // Update savings total
+              await tx.savings.update({
+                where: { id: savings.id },
+                data: { totalAmount: runningTotal },
+              });
+            }
+          }
+        }
+      }
+
       // Delete all payments (will cascade)
       await tx.collectionPayment.deleteMany({
         where: { collectionId: collectionId },
