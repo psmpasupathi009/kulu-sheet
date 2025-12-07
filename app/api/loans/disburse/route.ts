@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
       where: { id: data.sequenceId },
       include: {
         cycle: {
-          include: { groupFund: true },
         },
         member: true,
       },
@@ -57,29 +56,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if group fund has enough money
-    if (sequence.cycle?.groupFund) {
-      const groupFund = sequence.cycle.groupFund;
-      if (groupFund.totalFunds < sequence.loanAmount) {
-        return NextResponse.json(
-          {
-            error: "Insufficient funds in group pool",
-            available: groupFund.totalFunds,
-            required: sequence.loanAmount,
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Get cycle with group to determine interest rate
-    const cycle = await prisma.loanCycle.findUnique({
-      where: { id: sequence.cycleId },
-      include: { group: true },
-    });
-
-    // ROSCA: No interest, 10 months repayment
-    const loanMonths = cycle?.group?.loanMonths || 10;
+    // No group fund - loans are disbursed from savings pool
+    // Default to 10 months repayment
+    const loanMonths = 10;
 
     // Create loan
     const loan = await prisma.loan.create({
@@ -113,20 +92,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Update group fund - deduct loan amount from investment pool
-    if (sequence.cycle?.groupFund) {
-      await prisma.groupFund.update({
-        where: { id: sequence.cycle.groupFund.id },
-        data: {
-          investmentPool: {
-            decrement: sequence.loanAmount,
-          },
-          totalFunds: {
-            decrement: sequence.loanAmount,
-          },
-        },
-      });
-    }
+    // Group fund removed - no longer needed
 
     return NextResponse.json(
       {

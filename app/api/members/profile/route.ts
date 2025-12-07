@@ -44,38 +44,22 @@ export async function GET(request: NextRequest) {
         },
         loans: {
           include: {
-            cycle: {
-              include: {
-                group: {
-                  include: {
-                    members: {
-                      where: { isActive: true },
-                    },
-                  },
-                },
-              },
-            },
+            cycle: true,
             transactions: {
               orderBy: { date: "desc" },
             },
           },
           orderBy: { createdAt: "desc" },
         },
-        groupMembers: {
-          where: { isActive: true },
+        collectionPayments: {
           include: {
-            group: true,
-            collectionPayments: {
+            collection: {
               include: {
-                collection: {
-                  include: {
-                    cycle: true,
-                  },
-                },
+                cycle: true,
               },
-              orderBy: { paymentDate: "desc" },
             },
           },
+          orderBy: { paymentDate: "desc" },
         },
       },
     });
@@ -105,9 +89,9 @@ export async function GET(request: NextRequest) {
     );
 
 
-    // Calculate total contributions across all groups
-    const totalContributions = member.groupMembers.reduce(
-      (sum, gm) => sum + gm.totalContributed,
+    // Calculate total contributions from collection payments
+    const totalContributions = member.collectionPayments.reduce(
+      (sum, cp) => sum + (cp.status === "PAID" ? cp.amount : 0),
       0
     );
 
@@ -138,24 +122,10 @@ export async function GET(request: NextRequest) {
           totalLoansRemaining,
           activeLoansCount: activeLoans.length,
           completedLoansCount: completedLoans.length,
-          groupsCount: member.groupMembers.length,
         },
         savings: member.savings,
         loans: member.loans,
-        groups: member.groupMembers.map((gm) => ({
-          id: gm.id,
-          group: {
-            id: gm.group.id,
-            name: gm.group.name,
-          },
-          joiningMonth: gm.joiningMonth,
-          joiningDate: gm.joiningDate,
-          monthlyAmount: gm.monthlyAmount,
-          totalContributed: gm.totalContributed,
-          totalReceived: gm.totalReceived,
-          benefitAmount: gm.benefitAmount,
-          collections: gm.collectionPayments,
-        })),
+        collectionPayments: member.collectionPayments,
       },
       { status: 200 }
     );

@@ -7,9 +7,7 @@ import { z } from "zod";
 const repayLoanSchema = z.object({
   loanId: z.string(),
   paymentDate: z.string().optional(), // Optional, defaults to now
-  isLate: z.boolean().default(false),
-  overdueMonths: z.number().int().min(0).default(0),
-  paymentMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(),
+  paymentMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(), // Payment method for repayment
 });
 
 export async function POST(request: NextRequest) {
@@ -34,19 +32,7 @@ export async function POST(request: NextRequest) {
       where: { id: data.loanId },
       include: {
         member: true,
-        cycle: {
-          include: {
-            groupFund: true,
-            group: {
-              include: {
-                members: {
-                  where: { isActive: true },
-                  include: { member: true },
-                },
-              },
-            },
-          },
-        },
+        cycle: true,
       },
     });
 
@@ -85,72 +71,25 @@ export async function POST(request: NextRequest) {
       ? new Date(data.paymentDate)
       : new Date();
 
-    // Calculate months since disbursal (approximate)
-    const monthsSinceDisbursal = Math.floor(
-      (paymentDate.getTime() - disbursedDate.getTime()) /
-        (30 * 24 * 60 * 60 * 1000)
-    );
-
-    // Expected month = months since disbursal + 1 (month 1 starts immediately)
-    const expectedMonth = monthsSinceDisbursal + 1;
-
-    // Calculate missed months (if current month is behind expected month)
-    const missedMonths = Math.max(0, expectedMonth - loan.currentMonth - 1);
-
-    // Auto-detect if payment is late
-    const isLate = missedMonths > 0 || data.isLate;
-    const overdueMonths =
-      data.overdueMonths > 0 ? data.overdueMonths : missedMonths;
-
-    // Calculate monthly payment amount based on loan (no interest)
-    // Monthly principal = total principal / total months
+    // Calculate monthly payment amount based on loan
+    // Monthly principal = total principal / total months (no interest, no penalty)
     const monthlyPrincipal = loan.principal / loan.months;
 
-    // No interest in monthly ROSCA system
-    const monthlyInterest = 0;
-
-    // If there are missed months, calculate accumulated penalty
-    let accumulatedPenalty = 0;
-
-    if (missedMonths > 0) {
-      // Penalty: 0.5% of remaining balance per missed month
-      let tempRemaining = loan.remaining;
-      for (let i = 0; i < missedMonths; i++) {
-        accumulatedPenalty += (tempRemaining * 0.5) / 100;
-      }
-    }
-
-    // Total monthly payment (principal only, no interest)
+    // No interest, no penalty - only principal payments
     const monthlyPayment = monthlyPrincipal;
+    const totalPayment = monthlyPayment;
 
     // Calculate new remaining balance
     const newRemaining = Math.max(0, loan.remaining - monthlyPrincipal);
-    const newMonth = loan.currentMonth + 1 + missedMonths; // Advance by missed months + 1
+    const newMonth = loan.currentMonth + 1; // Advance by 1 month
 
     // Calculate payment breakdown
     const payment = {
       principal: monthlyPrincipal,
       interest: 0, // No interest
-      total: monthlyPayment,
+      total: totalPayment, // Principal only
       newBalance: newRemaining,
     };
-
-    // Calculate late penalty
-    let latePenalty = accumulatedPenalty;
-    if (
-      data.isLate &&
-      data.overdueMonths > 0 &&
-      data.overdueMonths !== missedMonths
-    ) {
-      // Manual override if different from calculated
-      let tempRemaining = loan.remaining;
-      for (let i = 0; i < data.overdueMonths; i++) {
-        latePenalty += (tempRemaining * 0.5) / 100;
-      }
-    }
-
-    // Total payment includes: monthly payment + late penalty (no interest)
-    const totalPayment = payment.total + latePenalty;
 
     // Update loan
     const updatedLoan = await prisma.loan.update({
@@ -161,7 +100,6 @@ export async function POST(request: NextRequest) {
         totalPrincipalPaid: loan.totalPrincipalPaid + payment.principal,
         status: payment.newBalance <= 0 ? "COMPLETED" : "ACTIVE",
         completedAt: payment.newBalance <= 0 ? paymentDate : null,
-        latePaymentPenalty: loan.latePaymentPenalty + latePenalty,
       },
     });
 
@@ -171,28 +109,105 @@ export async function POST(request: NextRequest) {
         loanId: loan.id,
         date: paymentDate,
         amount: payment.principal,
-        penalty: latePenalty, // Penalty recorded separately
         remaining: payment.newBalance,
         month: newMonth,
         paymentMethod: data.paymentMethod || null,
       },
     });
 
-    // Update group fund if cycle exists
-    if (loan.cycle?.groupFund) {
-      const groupFund = loan.cycle.groupFund;
-
-      await prisma.groupFund.update({
-        where: { id: groupFund.id },
-        data: {
-          investmentPool: {
-            increment: payment.principal,
-          },
-          totalFunds: {
-            increment: payment.principal,
-          },
+    // Add repayment back to savings pool proportionally
+    // Get all members who have savings
+    const allMembers = await prisma.member.findMany({
+      where: {
+        savings: {
+          some: {},
         },
-      });
+      },
+      include: {
+        savings: true,
+      },
+    });
+
+    if (allMembers.length > 0) {
+      // Calculate total savings to determine distribution proportion
+      const totalSavings = allMembers.reduce(
+        (sum, m) => sum + (m.savings[0]?.totalAmount || 0),
+        0
+      );
+
+      if (totalSavings > 0) {
+        // Distribute repayment proportionally based on each member's savings
+        const distributionPromises = allMembers.map(async (member) => {
+          const memberSavings = member.savings[0]?.totalAmount || 0;
+          const savingsPercentage = memberSavings / totalSavings;
+          const repaymentShare = payment.principal * savingsPercentage;
+
+          if (repaymentShare > 0) {
+            let savings = member.savings[0];
+            if (!savings) {
+              savings = await prisma.savings.create({
+                data: {
+                  memberId: member.id,
+                  totalAmount: 0,
+                },
+              });
+            }
+
+            // Add repayment share to member's savings
+            const newTotal = savings.totalAmount + repaymentShare;
+            await prisma.savingsTransaction.create({
+              data: {
+                savingsId: savings.id,
+                date: paymentDate,
+                amount: repaymentShare,
+                total: newTotal,
+              },
+            });
+
+            await prisma.savings.update({
+              where: { id: savings.id },
+              data: {
+                totalAmount: newTotal,
+              },
+            });
+          }
+        });
+
+        await Promise.all(distributionPromises);
+      } else {
+        // If no savings exist, distribute equally among all members
+        const equalShare = payment.principal / allMembers.length;
+        const distributionPromises = allMembers.map(async (member) => {
+          let savings = member.savings[0];
+          if (!savings) {
+            savings = await prisma.savings.create({
+              data: {
+                memberId: member.id,
+                totalAmount: 0,
+              },
+            });
+          }
+
+          const newTotal = savings.totalAmount + equalShare;
+          await prisma.savingsTransaction.create({
+            data: {
+              savingsId: savings.id,
+              date: paymentDate,
+              amount: equalShare,
+              total: newTotal,
+            },
+          });
+
+          await prisma.savings.update({
+            where: { id: savings.id },
+            data: {
+              totalAmount: newTotal,
+            },
+          });
+        });
+
+        await Promise.all(distributionPromises);
+      }
     }
 
     return NextResponse.json(
@@ -201,13 +216,10 @@ export async function POST(request: NextRequest) {
         transaction,
         payment: {
           principal: payment.principal,
-          latePenalty,
-          total: totalPayment,
+          total: payment.total,
           newBalance: payment.newBalance,
-          monthlyAmount: monthlyPayment, // Total amount to pay per month
-          missedMonths: missedMonths, // Number of months missed
-          expectedMonth: expectedMonth, // Expected month based on date
-          isLate: isLate, // Whether payment is late
+          monthlyAmount: monthlyPayment, // Total amount to pay per month (principal only)
+          paymentMethod: data.paymentMethod || null,
         },
       },
       { status: 200 }

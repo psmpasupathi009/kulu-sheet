@@ -40,15 +40,6 @@ export async function GET(
           include: { member: true },
           orderBy: { month: "asc" },
         },
-        groupFund: true,
-        group: {
-          include: {
-            members: {
-              where: { isActive: true },
-              include: { member: true },
-            },
-          },
-        },
       },
     });
 
@@ -108,15 +99,6 @@ export async function PUT(
           include: { member: true },
           orderBy: { month: "asc" },
         },
-        groupFund: true,
-        group: {
-          include: {
-            members: {
-              where: { isActive: true },
-              include: { member: true },
-            },
-          },
-        },
       },
     });
 
@@ -173,7 +155,6 @@ export async function DELETE(
             },
           },
         },
-        groupFund: true,
       },
     });
 
@@ -193,12 +174,7 @@ export async function DELETE(
 
     // Delete cycle and related data in a transaction
     await prisma.$transaction(async (tx) => {
-      // Delete group fund if exists
-      if (cycle.groupFund) {
-        await tx.groupFund.delete({
-          where: { cycleId: id },
-        });
-      }
+      // Group fund removed - no longer needed
 
       // Delete sequences
       await tx.loanSequence.deleteMany({

@@ -129,24 +129,7 @@ export async function POST(
           },
         });
 
-        // Update group fund if exists
-        const groupFund = await tx.groupFund.findUnique({
-          where: { cycleId: cycleId },
-        });
-
-        if (groupFund) {
-          await tx.groupFund.update({
-            where: { id: groupFund.id },
-            data: {
-              investmentPool: {
-                increment: catchUpAmount,
-              },
-              totalFunds: {
-                increment: catchUpAmount,
-              },
-            },
-          });
-        }
+        // Group fund removed - no longer needed
       }
 
       return { sequence, catchUpAmount, monthsElapsed };

@@ -94,28 +94,7 @@ export async function POST(request: NextRequest) {
       data: { totalAmount: newTotal },
     })
 
-    // If this is a weekly contribution (₹100), add to active cycle's investment pool
-    // This assumes weekly contributions go to the current active cycle
-    if (data.amount === 100) {
-      const activeCycle = await prisma.loanCycle.findFirst({
-        where: { isActive: true },
-        include: { groupFund: true },
-      })
-
-      if (activeCycle?.groupFund) {
-        await prisma.groupFund.update({
-          where: { id: activeCycle.groupFund.id },
-          data: {
-            investmentPool: {
-              increment: data.amount,
-            },
-            totalFunds: {
-              increment: data.amount,
-            },
-          },
-        })
-      }
-    }
+    // Weekly contributions are now added directly to member's savings (handled above)
 
     return NextResponse.json(
       { transaction, savings: updatedSavings },

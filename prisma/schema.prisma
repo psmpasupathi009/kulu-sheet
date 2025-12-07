@@ -18,12 +18,9 @@ enum UserRole {
 enum TransactionType {
   SAVINGS
   LOAN
-  INTEREST
   MISCELLANEOUS
   COLLECTION  // Monthly collection payment
-  PENALTY     // Penalty payment
 }
-
 
 enum LoanStatus {
   PENDING     // Loan approved but not disbursed
@@ -76,7 +73,6 @@ model Member {
   guaranteedLoans1 Loan[] @relation("LoanGuarantor1")
   guaranteedLoans2 Loan[] @relation("LoanGuarantor2")
   collectionPayments CollectionPayment[]
-  groupMembers  GroupMember[] // Memberships in groups
 
   @@map("members")
 }
@@ -106,65 +102,22 @@ model SavingsTransaction {
   @@map("savings_transactions")
 }
 
-model Group {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  name          String    // Group name
-  adminId       String    @db.ObjectId // Admin/Organizer user ID
-  monthlyAmount  Float?    // Optional default/suggested amount (members can contribute different amounts)
-  loanMonths     Int       @default(10) // 10 months repayment term
-  penaltyLoanPercent Float @default(10.0) // 10% penalty on loan principal
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  members       GroupMember[] // Dynamic members list
-  cycles        LoanCycle[]
-  collections   MonthlyCollection[]
-
-  @@map("groups")
-}
-
-model GroupMember {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  groupId       String    @db.ObjectId
-  group         Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  memberId      String    @db.ObjectId
-  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  joiningMonth   Int       // Month number when member joined (1, 2, 3...)
-  joiningDate   DateTime  // Actual date when member joined
-  monthlyAmount  Float     @default(2000) // Individual member's monthly contribution amount
-  isActive      Boolean   @default(true) // Can be deactivated without deleting
-  totalContributed Float   @default(0) // Total amount contributed so far
-  totalReceived   Float    @default(0) // Total amount received as loans
-  benefitAmount  Float     @default(0) // Amount member is eligible to receive based on joining month
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  collectionPayments CollectionPayment[]
-
-  @@unique([groupId, memberId])
-  @@map("group_members")
-}
-
 model LoanCycle {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   cycleNumber   Int       // Cycle number (1, 2, 3...)
-  groupId       String?   @db.ObjectId
-  group         Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
   startDate     DateTime
   endDate       DateTime?
   monthlyAmount  Float     @default(2000) // ₹2000 per member per month
   currentMonth   Int       @default(0) // Current month in cycle
+  totalMembers   Int       @default(0) // Total number of members in cycle
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   loans         Loan[]
   sequences     LoanSequence[]
-  groupFund     GroupFund?
   collections   MonthlyCollection[]
 
-  @@unique([groupId, cycleNumber])
   @@map("loan_cycles")
 }
 
@@ -201,14 +154,12 @@ model Loan {
   status        LoanStatus @default(PENDING)
   reason        String?   // Reason/purpose for the loan
   totalPrincipalPaid Float @default(0) // Total principal paid
-  totalPenalty  Float     @default(0) // Total penalty paid
   disbursedAt   DateTime? // When loan was disbursed
   completedAt   DateTime? // When loan was fully repaid
   guarantor1Id  String?   @db.ObjectId
   guarantor1    Member?   @relation("LoanGuarantor1", fields: [guarantor1Id], references: [id])
   guarantor2Id  String?   @db.ObjectId
   guarantor2    Member?   @relation("LoanGuarantor2", fields: [guarantor2Id], references: [id])
-  latePaymentPenalty Float @default(0) // Additional penalty per month delayed
   disbursementMethod PaymentMethod? // How loan was disbursed
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -224,10 +175,9 @@ model LoanTransaction {
   loan          Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
   date          DateTime
   amount        Float     // Principal payment
-  penalty       Float     @default(0) // Penalty amount paid
   remaining     Float     // Remaining balance after this payment
-  month          Int       // Month number (1-10)
-  paymentMethod PaymentMethod? // How repayment was made
+  month          Int       // Month number (1-10) - Monthly payment
+  paymentMethod PaymentMethod? // Method used for payment (CASH, UPI, BANK_TRANSFER)
   createdAt     DateTime  @default(now())
 
   @@map("loan_transactions")
@@ -237,9 +187,7 @@ model MonthlyCollection {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   cycleId       String    @db.ObjectId
   cycle         LoanCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  groupId       String?   @db.ObjectId
-  group         Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  month          Int       // Month number in cycle
+  month          Int       // Month number in cycle (1-10) - Monthly payment
   collectionDate DateTime  // Date of collection
   totalCollected Float     @default(0) // Total collected from all active members
   expectedAmount Float     @default(0) // Expected amount based on active members
@@ -260,9 +208,7 @@ model CollectionPayment {
   collection    MonthlyCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   memberId      String    @db.ObjectId
   member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  groupMemberId String?   @db.ObjectId
-  groupMember   GroupMember? @relation(fields: [groupMemberId], references: [id], onDelete: SetNull)
-  amount        Float     @default(2000) // Monthly contribution amount
+  amount        Float     @default(2000) // Monthly contribution amount - Monthly payment
   paymentDate   DateTime
   paymentMethod String?   // UPI, Razorpay, Cash, etc.
   status        String    @default("PENDING") // PENDING, PAID, OVERDUE
@@ -311,15 +257,12 @@ model MonthlyStatement {
   @@map("monthly_statements")
 }
 
-model GroupFund {
+// Simple Investment Pool - All members invest here
+model InvestmentPool {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  cycleId       String?   @unique @db.ObjectId
-  cycle         LoanCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
-  investmentPool Float    @default(0) // Accumulated monthly contributions
-  totalFunds    Float     @default(0) // Total available funds
+  totalAmount   Float     @default(0) // Total pooled investments
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@map("group_funds")
+  @@map("investment_pools")
 }
-

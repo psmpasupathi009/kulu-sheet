@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Create a new weekly collection
+// Create a new monthly collection
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -101,47 +101,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get cycle details with group and active members
+    // Get cycle details
     const cycle = await prisma.loanCycle.findUnique({
       where: { id: data.cycleId },
-      include: {
-        group: {
-          include: {
-            members: {
-              where: { isActive: true },
-              include: { member: true },
-            },
-          },
-        },
-      },
     });
 
     if (!cycle) {
       return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
     }
 
-    if (!cycle.group) {
-      return NextResponse.json(
-        { error: "Group not found for this cycle" },
-        { status: 404 }
-      );
-    }
+    // Get all members who have savings (active members)
+    const allMembers = await prisma.member.findMany({
+      where: {
+        savings: {
+          some: {},
+        },
+      },
+    });
 
-    // Calculate active members for this month (members who joined before or during this month)
-    const activeMembers = cycle.group.members.filter(
-      (gm) => gm.joiningMonth <= data.month
-    );
-    const activeMemberCount = activeMembers.length;
-    // Calculate expected amount based on each member's individual monthly amount
-    const expectedAmount = activeMembers.reduce(
-      (sum, gm) => sum + (gm.monthlyAmount || 2000),
-      0
-    );
+    const activeMemberCount = allMembers.length;
+    // Calculate expected amount: monthlyAmount * number of active members
+    const expectedAmount = cycle.monthlyAmount * activeMemberCount;
 
     const collection = await prisma.monthlyCollection.create({
       data: {
         cycleId: data.cycleId,
-        groupId: cycle.groupId || null,
         month: data.month,
         collectionDate: new Date(data.collectionDate),
         totalCollected: 0,
@@ -205,6 +189,8 @@ export async function PUT(request: NextRequest) {
     let payment;
     if (existingPayment) {
       // Update existing payment
+      const amountDifference = data.amount - existingPayment.amount;
+      
       payment = await prisma.collectionPayment.update({
         where: { id: existingPayment.id },
         data: {
@@ -215,52 +201,48 @@ export async function PUT(request: NextRequest) {
         },
       });
 
-      // If updating existing payment, calculate the difference
-      const amountDifference = data.amount - existingPayment.amount;
-      if (amountDifference !== 0 && existingPayment.groupMemberId) {
-        await prisma.groupMember.update({
-          where: { id: existingPayment.groupMemberId },
-          data: {
-            totalContributed: {
-              increment: amountDifference,
-            },
-          },
+      // Update member's savings if amount changed
+      if (amountDifference !== 0) {
+        const member = await prisma.member.findUnique({
+          where: { id: data.memberId },
+          include: { savings: true },
         });
+
+        if (member) {
+          let savings = member.savings[0];
+          if (!savings) {
+            savings = await prisma.savings.create({
+              data: {
+                memberId: member.id,
+                totalAmount: 0,
+              },
+            });
+          }
+
+          const newTotal = savings.totalAmount + amountDifference;
+          await prisma.savingsTransaction.create({
+            data: {
+              savingsId: savings.id,
+              date: new Date(),
+              amount: amountDifference,
+              total: newTotal,
+            },
+          });
+
+          await prisma.savings.update({
+            where: { id: savings.id },
+            data: { totalAmount: newTotal },
+          });
+        }
       }
     } else {
-      // Get group member for this payment
-      const collectionForMember = await prisma.monthlyCollection.findUnique({
-        where: { id: data.collectionId },
-        include: {
-          cycle: {
-            include: {
-              group: {
-                include: {
-                  members: {
-                    where: {
-                      memberId: data.memberId,
-                      isActive: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      const groupMember = collectionForMember?.cycle?.group?.members[0] || null;
-      const groupMemberId = groupMember?.id || null;
-
-      // Use member's monthly amount if not specified, or use provided amount
-      const paymentAmount = data.amount || groupMember?.monthlyAmount || 2000;
-
       // Create new payment
+      const paymentAmount = data.amount || 2000;
+
       payment = await prisma.collectionPayment.create({
         data: {
           collectionId: data.collectionId,
           memberId: data.memberId,
-          groupMemberId: groupMemberId,
           amount: paymentAmount,
           paymentDate: new Date(),
           paymentMethod: data.paymentMethod,
@@ -268,41 +250,38 @@ export async function PUT(request: NextRequest) {
         },
       });
 
-      // Update group member's total contributed when payment is created
-      if (groupMemberId) {
-        await prisma.groupMember.update({
-          where: { id: groupMemberId },
-          data: {
-            totalContributed: {
-              increment: paymentAmount,
+      // Add payment to member's savings
+      const member = await prisma.member.findUnique({
+        where: { id: data.memberId },
+        include: { savings: true },
+      });
+
+      if (member) {
+        let savings = member.savings[0];
+        if (!savings) {
+          savings = await prisma.savings.create({
+            data: {
+              memberId: member.id,
+              totalAmount: 0,
             },
+          });
+        }
+
+        const newTotal = savings.totalAmount + paymentAmount;
+        await prisma.savingsTransaction.create({
+          data: {
+            savingsId: savings.id,
+            date: new Date(),
+            amount: paymentAmount,
+            total: newTotal,
           },
         });
+
+        await prisma.savings.update({
+          where: { id: savings.id },
+          data: { totalAmount: newTotal },
+        });
       }
-    }
-
-    // Get collection first to find group
-    const collectionForGroup = await prisma.monthlyCollection.findUnique({
-      where: { id: data.collectionId },
-      include: {
-        cycle: {
-          include: {
-            group: true,
-          },
-        },
-      },
-    });
-
-    // Get group member for linking payment
-    let groupMember = null;
-    if (collectionForGroup?.cycle?.groupId) {
-      groupMember = await prisma.groupMember.findFirst({
-        where: {
-          groupId: collectionForGroup.cycle.groupId,
-          memberId: data.memberId,
-          isActive: true,
-        },
-      });
     }
 
     // Update collection total
@@ -314,18 +293,6 @@ export async function PUT(request: NextRequest) {
             member: true,
           },
         },
-        cycle: {
-          include: {
-            group: {
-              include: {
-                members: {
-                  where: { isActive: true },
-                },
-              },
-            },
-            groupFund: true,
-          },
-        },
       },
     });
 
@@ -335,14 +302,6 @@ export async function PUT(request: NextRequest) {
         0
       );
 
-      // Update payment with groupMemberId if found (if not already set)
-      if (groupMember && payment && !payment.groupMemberId) {
-        await prisma.collectionPayment.update({
-          where: { id: payment.id },
-          data: { groupMemberId: groupMember.id },
-        });
-      }
-
       await prisma.monthlyCollection.update({
         where: { id: data.collectionId },
         data: {
@@ -350,28 +309,6 @@ export async function PUT(request: NextRequest) {
           isCompleted: totalCollected >= (collection.expectedAmount || 0),
         },
       });
-
-      // Add payment amount to group fund's investment pool
-      // This represents the member's contribution to the group pool
-      if (collection.cycle?.groupFund) {
-        const paymentAmount = existingPayment
-          ? data.amount - existingPayment.amount // Difference if updating
-          : data.amount; // Full amount if new payment
-
-        if (paymentAmount > 0) {
-          await prisma.groupFund.update({
-            where: { id: collection.cycle.groupFund.id },
-            data: {
-              investmentPool: {
-                increment: paymentAmount,
-              },
-              totalFunds: {
-                increment: paymentAmount,
-              },
-            },
-          });
-        }
-      }
     }
 
     return NextResponse.json({ payment }, { status: 200 });
