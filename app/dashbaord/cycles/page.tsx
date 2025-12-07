@@ -1274,7 +1274,8 @@ export default function CyclesPage() {
                   {/* Collections History */}
                   {group.collections.length > 0 && (
                     <div className="border rounded-lg overflow-hidden">
-                      <Table>
+                      <div className="overflow-x-auto">
+                        <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Month</TableHead>

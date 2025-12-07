@@ -34,7 +34,7 @@ export default function DashboardLayout({
         <AppSidebar />
         <main className="flex-1 flex flex-col relative z-10 min-h-screen bg-background/50 backdrop-blur-[0.5px]">
           <PageHeader />
-          <div className="flex-1 p-4">{children}</div>
+          <div className="flex-1 p-3 sm:p-4 md:p-6">{children}</div>
         </main>
       </div>
     </SidebarProvider>

@@ -107,7 +107,14 @@ export default function SavingsDetailPage() {
   }
 
   if (loading) {
-    return <div>Loading...</div>
+    return (
+      <div className="flex items-center justify-center min-h-[200px] p-4 sm:p-6">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-sm sm:text-base text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!savings) {
@@ -115,26 +122,27 @@ export default function SavingsDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" asChild>
+    <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+        <Button variant="outline" asChild className="w-full sm:w-auto">
           <Link href="/dashbaord/savings">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Link>
         </Button>
-        <div>
-          <h1 className="text-3xl font-bold">Savings Details</h1>
-          <p className="text-muted-foreground">{savings.member.name} - {savings.member.userId}</p>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold truncate">Savings Details</h1>
+          <p className="text-sm sm:text-base text-muted-foreground truncate">{savings.member.name} - {savings.member.userId}</p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Total Savings: ₹{savings.totalAmount.toFixed(2)}</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Total Savings: ₹{savings.totalAmount.toFixed(2)}</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
+        <CardContent className="p-0 sm:p-6">
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>S.No</TableHead>
@@ -274,6 +282,7 @@ export default function SavingsDetailPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

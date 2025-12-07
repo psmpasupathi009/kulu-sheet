@@ -331,7 +331,7 @@ export default function DashboardPage() {
       {!dataLoading && financialData && (
         <div className="space-y-6">
           {/* Tabs Navigation */}
-          <div className="flex flex-wrap gap-2 border-b">
+          <div className="flex flex-wrap gap-2 border-b overflow-x-auto">
                 <button
                   onClick={() => setActiveTab("savings")}
                   className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -434,10 +434,12 @@ export default function DashboardPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             )}
 
             {/* Loans Table */}
             {activeTab === "loans" && (
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -521,7 +523,8 @@ export default function DashboardPage() {
 
             {/* Collections Table */}
             {activeTab === "collections" && (
-              <Table>
+              <div className="overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Group</TableHead>
@@ -574,11 +577,13 @@ export default function DashboardPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             )}
 
             {/* Cycles Table (Admin Only) */}
             {activeTab === "groups" && isAdmin && (
-              <Table>
+              <div className="overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Group #</TableHead>
@@ -637,6 +642,7 @@ export default function DashboardPage() {
                   )}
                 </TableBody>
               </Table>
+            </div>
             )}
           </div>
         </div>
