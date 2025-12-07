@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/field";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Calendar, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Calendar, CheckCircle2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { generatePaymentSchedule } from "@/lib/utils";
