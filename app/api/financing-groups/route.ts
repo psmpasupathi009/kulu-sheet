@@ -58,6 +58,18 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        loans: {
+          select: {
+            id: true,
+            memberId: true,
+            loanMonth: true,
+            months: true,
+            currentMonth: true,
+            principal: true,
+            remaining: true,
+            status: true,
+          },
+        },
         _count: {
           select: {
             members: true,
@@ -134,6 +146,7 @@ export async function POST(request: NextRequest) {
         members: {
           create: data.memberIds.map((memberId) => ({
             memberId: memberId,
+            joinMonth: 1, // All initial members join in month 1
           })),
         },
       },

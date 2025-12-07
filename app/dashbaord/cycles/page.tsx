@@ -14,6 +14,26 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   IndianRupee,
   Users,
@@ -45,6 +65,7 @@ interface Member {
 interface GroupMember {
   id: string;
   memberId: string;
+  joinMonth: number;
   member: Member;
 }
 
@@ -82,6 +103,16 @@ interface FinancingGroup {
   isActive: boolean;
   members: GroupMember[];
   collections: MonthlyCollection[];
+  loans?: Array<{
+    id: string;
+    memberId: string;
+    loanMonth: number | null;
+    months: number;
+    currentMonth: number;
+    principal: number;
+    remaining: number;
+    status: string;
+  }>;
 }
 
 export default function CyclesPage() {
@@ -114,6 +145,12 @@ export default function CyclesPage() {
   const [giveLoanForm, setGiveLoanForm] = useState({
     memberId: "",
     disbursementMethod: "CASH" as "CASH" | "UPI" | "BANK_TRANSFER",
+  });
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [editGroupForm, setEditGroupForm] = useState({
+    name: "",
+    monthlyAmount: "",
+    startDate: "",
   });
 
   useEffect(() => {
@@ -214,7 +251,7 @@ export default function CyclesPage() {
         }),
       });
 
-        const data = await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to create collection");
@@ -253,7 +290,7 @@ export default function CyclesPage() {
         }),
       });
 
-      const data = await response.json();
+        const data = await response.json();
 
       if (!response.ok) {
         // Show detailed error message if member already paid
@@ -265,7 +302,7 @@ export default function CyclesPage() {
               duration: 5000,
             }
           );
-        } else {
+      } else {
           toast.error(data.error || "Failed to record payment");
         }
         setRecordingPayment(false);
@@ -511,8 +548,8 @@ export default function CyclesPage() {
                         <Label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
                           Select All
                         </Label>
-                      </div>
-                    </div>
+                </div>
+                  </div>
                     <div className="max-h-[400px] overflow-y-auto p-2">
                       {allMembers.map((member) => (
                         <div
@@ -530,21 +567,21 @@ export default function CyclesPage() {
                           <Label
                             htmlFor={`member-${member.id}`}
                             className="text-sm font-medium leading-none cursor-pointer flex-1">
-                            <div>
+                  <div>
                               <p className="font-medium">{member.name}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">
                                 {member.userId}
-                              </p>
-                            </div>
+                    </p>
+                  </div>
                           </Label>
                           {createGroupForm.selectedMemberIds.includes(member.id) && (
                             <span className="text-xs text-primary font-medium">
                               Month {createGroupForm.selectedMemberIds.indexOf(member.id) + 1}
                             </span>
-                          )}
-                        </div>
+                )}
+              </div>
                       ))}
-                    </div>
+                  </div>
                   </div>
                   <FieldDescription>
                     Select members (minimum 2). Admin will decide who receives the loan each month. The cycle duration equals the number of members.
@@ -560,15 +597,15 @@ export default function CyclesPage() {
                       </>
                     ) : (
                       <>
-                        <Plus className="mr-2 h-4 w-4" />
+                      <Plus className="mr-2 h-4 w-4" />
                         Create Group
                       </>
                     )}
                   </Button>
-                  <Button
+                                  <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
+                                    onClick={() => {
                       setShowCreateGroup(false);
                       setCreateGroupForm({
                         name: "",
@@ -579,8 +616,8 @@ export default function CyclesPage() {
                     }}
                     disabled={creatingGroup}>
                     Cancel
-                  </Button>
-                </div>
+                                  </Button>
+                            </div>
               </FieldGroup>
             </form>
             </CardContent>
@@ -607,7 +644,7 @@ export default function CyclesPage() {
             return (
               <Card key={group.id}>
             <CardHeader>
-                  <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
                     <div>
                       <CardTitle>
                         {group.name || `Group ${group.groupNumber}`} - {group.currentMonth > 0 ? format(addMonths(new Date(group.startDate), group.currentMonth - 1), 'MMMM yyyy') : 'Not Started'} ({group.currentMonth}/{group.totalMembers})
@@ -627,6 +664,151 @@ export default function CyclesPage() {
                           Completed
                         </span>
                       )}
+                      {user?.role === "ADMIN" && (
+                        <>
+                          <Dialog open={editingGroup === group.id} onOpenChange={(open) => {
+                            if (!open) {
+                              setEditingGroup(null);
+                              setEditGroupForm({ name: "", monthlyAmount: "", startDate: "" });
+                            } else {
+                              setEditingGroup(group.id);
+                              setEditGroupForm({
+                                name: group.name || "",
+                                monthlyAmount: group.monthlyAmount.toString(),
+                                startDate: new Date(group.startDate).toISOString().split("T")[0],
+                              });
+                            }
+                          }}>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm" className="h-8 px-2">
+                                <Edit className="h-3 w-3" />
+                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Edit Financing Group</DialogTitle>
+                                <DialogDescription>
+                                  Update the financing group details. Note: Monthly amount and start date cannot be changed if the group has collections or loans.
+                                </DialogDescription>
+                              </DialogHeader>
+              <FieldGroup>
+                <Field>
+                                  <FieldLabel>Group Name</FieldLabel>
+                                  <Input
+                                    value={editGroupForm.name}
+                                    onChange={(e) => setEditGroupForm({ ...editGroupForm, name: e.target.value })}
+                                    placeholder="Enter group name"
+                                  />
+                </Field>
+                <Field>
+                                  <FieldLabel>Monthly Amount (₹)</FieldLabel>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={editGroupForm.monthlyAmount}
+                                    onChange={(e) => setEditGroupForm({ ...editGroupForm, monthlyAmount: e.target.value })}
+                                    placeholder="2000"
+                                  />
+                </Field>
+                <Field>
+                                  <FieldLabel>Start Date</FieldLabel>
+                                  <Input
+                                    type="date"
+                                    value={editGroupForm.startDate}
+                                    onChange={(e) => setEditGroupForm({ ...editGroupForm, startDate: e.target.value })}
+                                  />
+                </Field>
+                              </FieldGroup>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => {
+                                  setEditingGroup(null);
+                                  setEditGroupForm({ name: "", monthlyAmount: "", startDate: "" });
+                                }}>
+                                  Cancel
+                                </Button>
+                                <Button onClick={async () => {
+                                  try {
+                                    const response = await fetch(`/api/financing-groups/${group.id}`, {
+                                      method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                                        name: editGroupForm.name || undefined,
+                                        monthlyAmount: editGroupForm.monthlyAmount ? parseFloat(editGroupForm.monthlyAmount) : undefined,
+                                        startDate: editGroupForm.startDate || undefined,
+                          }),
+                        });
+
+                                    const data = await response.json();
+                                    if (!response.ok) {
+                                      throw new Error(data.error || "Failed to update group");
+                                    }
+
+                                    toast.success("Financing group updated successfully!");
+                                    setEditingGroup(null);
+                                    setEditGroupForm({ name: "", monthlyAmount: "", startDate: "" });
+                                    fetchGroups();
+                                  } catch (err: any) {
+                                    toast.error(err.message || "Failed to update group");
+                                  }
+                                }}>
+                                  Save Changes
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="destructive" size="sm" className="h-8 px-2">
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Financing Group?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this financing group?
+                                  <br />
+                                  <strong>Group:</strong> {group.name || `Group ${group.groupNumber}`}
+                                  <br />
+                                  <strong>Members:</strong> {group.totalMembers}
+                                  <br />
+                                  <strong>Collections:</strong> {group.collections.length}
+                                  <br />
+                                  <strong>Loans:</strong> {group.loans?.length || 0}
+                                  <br />
+                                  <br />
+                                  This action can only be performed if the group has no collections or loans. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={async () => {
+                                    try {
+                                      const response = await fetch(`/api/financing-groups/${group.id}`, {
+                                        method: "DELETE",
+                                      });
+
+                                      if (!response.ok) {
+                                        const data = await response.json();
+                                        throw new Error(data.error || "Failed to delete group");
+                                      }
+
+                                      toast.success("Financing group deleted successfully!");
+                                      fetchGroups();
+                                    } catch (err: any) {
+                                      toast.error(err.message || "Failed to delete group");
+                                    }
+                                  }}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      )}
                     </div>
                   </div>
             </CardHeader>
@@ -639,6 +821,56 @@ export default function CyclesPage() {
                         {group.collections.filter(c => c.loanDisbursed).length} / {group.totalMembers} loans given
                       </span>
                     </div>
+                    {/* Loan Repayment Summary */}
+                    {group.loans && group.loans.length > 0 && (
+                      <div className="mt-4 pt-4 border-t">
+                        <h4 className="text-xs font-semibold mb-2 text-muted-foreground">Loan Repayment Status</h4>
+                        <div className="space-y-2">
+                          {group.loans.map((loan) => {
+                            const member = group.members.find(gm => gm.memberId === loan.memberId);
+                            const remainingPayments = loan.months - loan.currentMonth;
+                            const repaymentMonths = loan.months;
+                            return (
+                              <div key={loan.id} className="p-2 bg-white dark:bg-gray-900 rounded border text-xs">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium">
+                                    {member?.member.name || 'Unknown'} (Month {loan.loanMonth || 'N/A'})
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded text-xs ${
+                                    loan.status === 'COMPLETED' 
+                                      ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                      : loan.status === 'ACTIVE'
+                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                                      : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+                                  }`}>
+                                    {loan.status}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-muted-foreground">
+                                  <div>
+                                    <span>Loan:</span> <span className="font-medium">₹{loan.principal.toFixed(2)}</span>
+                                  </div>
+                                  <div>
+                                    <span>Remaining:</span> <span className="font-medium">₹{loan.remaining.toFixed(2)}</span>
+                                  </div>
+                                  <div>
+                                    <span>Repayment:</span> <span className="font-medium">{repaymentMonths} months</span>
+                                  </div>
+                                  <div>
+                                    <span>Progress:</span> <span className="font-medium">{loan.currentMonth}/{loan.months}</span>
+                                  </div>
+                                </div>
+                                {loan.status === 'ACTIVE' && remainingPayments > 0 && (
+                                  <div className="mt-2 pt-2 border-t text-orange-600 dark:text-orange-400">
+                                    <span className="font-medium">Remaining: {remainingPayments} of {loan.months} months</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                       {group.members.map((gm) => {
                         const hasReceivedLoan = group.collections.some(
@@ -697,25 +929,25 @@ export default function CyclesPage() {
                               onClick={() => handleCreateCollection(group.id)}
                               disabled={creatingCollection}>
                               {creatingCollection ? "Creating..." : "Create Collection"}
-                            </Button>
-                            <Button
-                              variant="outline"
+                  </Button>
+                  <Button
+                    variant="outline"
                               size="sm"
                               onClick={() => setShowCreateCollection(null)}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
+                    Cancel
+                  </Button>
+                </div>
+        </div>
                       ) : (
-                        <Button
+                <Button
                           variant="outline"
-                          size="sm"
+                  size="sm"
                           onClick={() => setShowCreateCollection(group.id)}>
                           <Calendar className="mr-2 h-4 w-4" />
                           Create {format(addMonths(new Date(group.startDate), group.currentMonth), 'MMMM yyyy')} Collection
-                        </Button>
+                </Button>
                       )}
-                    </div>
+              </div>
                   )}
 
                   {/* Payments List */}
@@ -784,16 +1016,16 @@ export default function CyclesPage() {
                           }}
                           className="space-y-3">
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Field>
+                <Field>
                               <FieldLabel>Member</FieldLabel>
-                              <select
+                  <select
                                 value={recordPaymentForm.memberId}
-                  onChange={(e) =>
+                    onChange={(e) =>
                                   setRecordPaymentForm({
                                     ...recordPaymentForm,
-                                    memberId: e.target.value,
-                                  })
-                                }
+                        memberId: e.target.value,
+                      })
+                    }
                                 required
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                                 <option value="">Select member</option>
@@ -812,7 +1044,7 @@ export default function CyclesPage() {
                                   return unpaidMembers.map((gm) => (
                                     <option key={gm.memberId} value={gm.memberId}>
                                       {gm.member.name} ({gm.member.userId})
-                                    </option>
+                        </option>
                                   ));
                                 })()}
                                 {(() => {
@@ -830,7 +1062,7 @@ export default function CyclesPage() {
                                   }
                                   return null;
                                 })()}
-                              </select>
+                  </select>
                               {(() => {
                                 if (!currentCollection) return null;
                                 const unpaidCount = group.members.filter(
@@ -853,28 +1085,28 @@ export default function CyclesPage() {
                                   </p>
                                 );
                               })()}
-              </Field>
-              <Field>
+                </Field>
+                <Field>
                               <FieldLabel>Amount</FieldLabel>
                               <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none text-sm">₹</span>
-                <Input
-                  type="number"
-                  step="0.01"
+                  <Input
+                    type="number"
+                    step="0.01"
                                   value={recordPaymentForm.amount}
-                  onChange={(e) =>
+                    onChange={(e) =>
                                     setRecordPaymentForm({
                                       ...recordPaymentForm,
                                       amount: e.target.value,
-                                    })
-                                  }
-                                  required
-                                  placeholder="2000"
+                      })
+                    }
+                    required
+                    placeholder="2000"
                                   className="pl-8"
-                                />
+                  />
                               </div>
-              </Field>
-              <Field>
+                </Field>
+                <Field>
                               <FieldLabel>Payment Method</FieldLabel>
                               <select
                                 value={recordPaymentForm.paymentMethod}
@@ -889,27 +1121,27 @@ export default function CyclesPage() {
                                 <option value="UPI">UPI</option>
                                 <option value="BANK_TRANSFER">Bank Transfer</option>
                               </select>
-              </Field>
-                          </div>
-              <div className="flex gap-2">
+                </Field>
+                        </div>
+                <div className="flex gap-2">
                             <Button type="submit" size="sm" disabled={recordingPayment}>
                               {recordingPayment ? "Recording..." : "Record Payment"}
-                </Button>
-                <Button
+                  </Button>
+                  <Button
                               type="button"
-                  variant="outline"
+                    variant="outline"
                               size="sm"
-                              onClick={() => {
+                    onClick={() => {
                                 setShowRecordPayment(null);
                                 setRecordPaymentForm({
-                                  memberId: "",
+                        memberId: "",
                                   amount: "",
                                   paymentMethod: "CASH",
-                                });
+                      });
                               }}>
-                  Cancel
-                </Button>
-              </div>
+                    Cancel
+                  </Button>
+                </div>
                         </form>
                       ) : (
                         <Button
@@ -919,8 +1151,8 @@ export default function CyclesPage() {
                           Record Payment
                         </Button>
                       )}
-                    </div>
-                  )}
+        </div>
+      )}
 
                   {/* Give Loan */}
                   {currentCollection && currentCollection.isCompleted && !currentCollection.loanDisbursed && (
@@ -935,11 +1167,11 @@ export default function CyclesPage() {
                             handleGiveLoan(group.id);
                           }}
                           className="space-y-3">
-                          <Field>
+              <Field>
                             <FieldLabel>Select Member to Receive Loan</FieldLabel>
                             <select
                               value={giveLoanForm.memberId}
-                              onChange={(e) =>
+                  onChange={(e) =>
                                 setGiveLoanForm({
                                   ...giveLoanForm,
                                   memberId: e.target.value,
@@ -965,12 +1197,12 @@ export default function CyclesPage() {
                             <FieldDescription>
                               Select which member should receive the loan from this collection. Members who already received loans are not shown.
                             </FieldDescription>
-                          </Field>
-                          <Field>
+              </Field>
+              <Field>
                             <FieldLabel>Disbursement Method</FieldLabel>
                             <select
                               value={giveLoanForm.disbursementMethod}
-                              onChange={(e) =>
+                  onChange={(e) =>
                                 setGiveLoanForm({
                                   ...giveLoanForm,
                                   disbursementMethod: e.target.value as "CASH" | "UPI" | "BANK_TRANSFER",
@@ -981,8 +1213,8 @@ export default function CyclesPage() {
                               <option value="UPI">UPI</option>
                               <option value="BANK_TRANSFER">Bank Transfer</option>
                             </select>
-                          </Field>
-                          <div className="flex gap-2">
+              </Field>
+              <div className="flex gap-2">
                             <Button
                               type="submit"
                               size="sm"
@@ -998,10 +1230,10 @@ export default function CyclesPage() {
                                   Give Loan
                                 </>
                               )}
-                            </Button>
-                            <Button
+                </Button>
+                <Button
                               type="button"
-                              variant="outline"
+                  variant="outline"
                               size="sm"
                               onClick={() => {
                                 setShowGiveLoanForm(null);
@@ -1010,9 +1242,9 @@ export default function CyclesPage() {
                                   disbursementMethod: "CASH",
                                 });
                               }}>
-                              Cancel
-                            </Button>
-                          </div>
+                  Cancel
+                </Button>
+              </div>
                         </form>
                       ) : (
                         <Button

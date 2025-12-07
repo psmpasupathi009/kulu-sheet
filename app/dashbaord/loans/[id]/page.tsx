@@ -70,6 +70,7 @@ interface Loan {
   remaining: number;
   currentMonth: number;
   months: number;
+  loanMonth?: number | null;
   status: string;
   totalPrincipalPaid: number;
   disbursedAt?: string | null;
@@ -333,12 +334,36 @@ export default function LoanDetailPage() {
               </span>
             </div>
             {loan.group && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Financing Group:</span>
-                <span className="font-medium">
-                  {loan.group.name || `Group #${loan.group.groupNumber}`}
-                </span>
-              </div>
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Financing Group:</span>
+                  <span className="font-medium">
+                    {loan.group.name || `Group #${loan.group.groupNumber}`}
+                  </span>
+                </div>
+                {loan.loanMonth && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Loan Received:</span>
+                    <span className="font-medium">
+                      Month {loan.loanMonth} of {loan.group.totalMembers}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Repayment Months:</span>
+                  <span className="font-medium">
+                    {loan.months} months (from month {loan.loanMonth || 1} to month {loan.group.totalMembers})
+                  </span>
+                </div>
+                {loan.status === "ACTIVE" && loan.remaining > 0 && (
+                  <div className="flex justify-between border-t pt-2 mt-2">
+                    <span className="text-muted-foreground">Remaining Payments:</span>
+                    <span className="font-medium text-orange-600">
+                      {loan.months - loan.currentMonth} of {loan.months} months
+                    </span>
+                  </div>
+                )}
+              </>
             )}
             {loan.disbursedAt && (
               <div className="flex justify-between">
@@ -487,14 +512,19 @@ export default function LoanDetailPage() {
                               ₹{loan.remaining.toFixed(2)}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">
-                              Loan Duration:
-                            </span>
-                            <span className="font-medium">
-                              {loan.months} months (based on {loan.group?.totalMembers || loan.months} members)
-                            </span>
-                          </div>
+                          {loan.group && loan.loanMonth && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">
+                                Repayment Period:
+                              </span>
+                              <span className="font-medium">
+                                {loan.months} months
+                                <span className="text-xs text-muted-foreground ml-2 block">
+                                  (Month {loan.loanMonth} to {loan.group.totalMembers} of {loan.group.totalMembers}-member cycle)
+                                </span>
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <Field>

@@ -49,6 +49,13 @@ export async function POST(
           },
           orderBy: { month: "desc" },
           take: 1,
+          include: {
+            payments: {
+              where: {
+                status: "PAID",
+              },
+            },
+          },
         },
       },
     });
@@ -98,24 +105,61 @@ export async function POST(
     const loanAmount = collection.totalCollected; // Pooled amount from all members
     const disbursedDate = new Date();
 
+    // Repayment formula: repaymentMonths = totalMembers - loanMonth + 1
+    // Example: 4 members, loan in month 1 → repays 4 months (4 - 1 + 1 = 4)
+    // Example: 4 members, loan in month 2 → repays 3 months (4 - 2 + 1 = 3)
+    // Example: 4 members, loan in month 4 → repays 1 month (4 - 4 + 1 = 1)
+    const loanMonth = collection.month; // Month when loan is being disbursed
+    const repaymentMonths = group.totalMembers - loanMonth + 1;
+    
+    // Check if the member has already paid in the collection month
+    // If they paid ₹2000 in month 1, that counts towards the loan repayment
+    // So remaining loan = total loan - their contribution in that month
+    const memberPayment = collection.payments?.find(
+      (p) => p.memberId === loanMember.memberId && p.status === "PAID"
+    );
+
+    const memberContribution = memberPayment?.amount || 0;
+    const remainingLoanAmount = loanAmount - memberContribution;
+    
     // Create loan from the pooled collection (no deduction from savings)
     // The loan comes from the collection, not from individual savings
     const result = await prisma.$transaction(
       async (tx) => {
         // Create loan
+        // If member already paid in the loan month, mark that month as paid (currentMonth = 1)
+        // Otherwise, start from 0
+        const initialCurrentMonth = memberContribution > 0 ? 1 : 0;
+        
         const loan = await tx.loan.create({
           data: {
             memberId: loanMember.memberId,
             groupId: groupId,
-            principal: loanAmount,
-            remaining: loanAmount,
-            months: group.totalMembers, // Loan duration matches financing group total members
-            currentMonth: 0,
+            principal: loanAmount, // Full loan amount received
+            remaining: remainingLoanAmount, // Remaining after deducting their contribution
+            months: repaymentMonths, // Total months member must pay (totalMembers - loanMonth + 1)
+            loanMonth: loanMonth, // Record which month loan was disbursed
+            currentMonth: initialCurrentMonth, // Start at 1 if they already paid in loan month, else 0
             status: "ACTIVE",
             disbursedAt: disbursedDate,
             disbursementMethod: data.disbursementMethod || null,
+            totalPrincipalPaid: memberContribution, // Their contribution counts as first payment
           },
         });
+
+        // If member already paid in the loan month, create a transaction record for it
+        if (memberContribution > 0) {
+          await tx.loanTransaction.create({
+            data: {
+              loanId: loan.id,
+              date: memberPayment?.paymentDate || disbursedDate,
+              amount: memberContribution,
+              remaining: remainingLoanAmount,
+              month: 1, // First month payment
+              paymentMethod: memberPayment?.paymentMethod || null,
+            },
+          });
+        }
 
         // Update collection
         await tx.monthlyCollection.update({
@@ -154,10 +198,14 @@ export async function POST(
       }
     );
 
+    const message = memberContribution > 0
+      ? `Loan of ₹${loanAmount.toFixed(2)} disbursed successfully to ${result.member.name}. Their contribution of ₹${memberContribution.toFixed(2)} in month ${loanMonth} is already counted. Remaining to repay: ₹${remainingLoanAmount.toFixed(2)} over ${repaymentMonths - 1} months.`
+      : `Loan of ₹${loanAmount.toFixed(2)} disbursed successfully to ${result.member.name}. Remaining to repay: ₹${remainingLoanAmount.toFixed(2)} over ${repaymentMonths} months.`;
+
     return NextResponse.json(
       {
         loan: result.loan,
-        message: `Loan of ₹${loanAmount.toFixed(2)} disbursed successfully to ${result.member.name}`,
+        message,
       },
       { status: 200 }
     );

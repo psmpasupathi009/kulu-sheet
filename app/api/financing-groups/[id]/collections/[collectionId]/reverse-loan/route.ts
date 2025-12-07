@@ -23,7 +23,19 @@ export async function POST(
       );
     }
 
-    const { id: groupId, collectionId } = await params;
+    const resolvedParams = await params;
+    const groupId = resolvedParams.id;
+    const collectionId = resolvedParams.collectionId;
+
+    console.log("Reverse loan - GroupId:", groupId, "CollectionId:", collectionId);
+
+    if (!groupId || !collectionId) {
+      console.error("Missing params - GroupId:", groupId, "CollectionId:", collectionId);
+      return NextResponse.json(
+        { error: "Group ID and Collection ID are required" },
+        { status: 400 }
+      );
+    }
 
     // Get collection with loan info
     const collection = await prisma.monthlyCollection.findUnique({

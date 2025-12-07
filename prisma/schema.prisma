@@ -127,6 +127,7 @@ model FinancingGroupMember {
   group     FinancingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   memberId  String         @db.ObjectId
   member    Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  joinMonth Int            @default(1) // Month when member joined the group (1-based)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
@@ -142,8 +143,9 @@ model Loan {
   group              FinancingGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   principal          Float // Original loan amount
   remaining          Float // Remaining balance
-  months             Int // Loan duration in months (equals group.totalMembers)
-  currentMonth       Int             @default(0)
+  months             Int // Total months member must pay (totalMembers - loanMonth + 1)
+  loanMonth          Int? // Month when loan was disbursed (1-based, relative to group start)
+  currentMonth       Int             @default(0) // Current repayment month
   status             LoanStatus      @default(PENDING)
   reason             String? // Reason/purpose for the loan
   totalPrincipalPaid Float           @default(0) // Total principal paid

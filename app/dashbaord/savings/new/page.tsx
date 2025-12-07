@@ -49,11 +49,22 @@ interface FinancingGroup {
   }>
   members: Array<{
     memberId: string
+    joinMonth: number
     member: {
       id: string
       name: string
       userId: string
     }
+  }>
+  loans?: Array<{
+    id: string
+    memberId: string
+    loanMonth: number | null
+    months: number
+    currentMonth: number
+    principal: number
+    remaining: number
+    status: string
   }>
 }
 
@@ -147,33 +158,30 @@ export default function NewSavingsPage() {
     if (!selectedGroup || !selectedMonth) return members
     
     const collection = selectedGroup.collections.find(c => c.month === selectedMonth)
-    if (!collection) {
-      // If no collection exists, show all group members
-      return members.filter(m => 
-        selectedGroup.members.some(gm => gm.memberId === m.id)
-      )
-    }
     
-    // Get members who have already paid
-    // Check if payment exists and status is PAID (case-insensitive)
-    // Also check if payment has amount > 0 (consider it paid even if status is missing)
-    const paidMemberIds = (collection.payments || [])
+    // Get members who have already paid for this month
+    const paidMemberIds = (collection?.payments || [])
       .filter(p => {
-        // Check status - must be explicitly PAID (case-insensitive)
         const status = String(p.status || '').trim().toUpperCase()
-        // If payment exists with status PAID, or if payment has amount > 0 (consider it paid)
-        // This handles cases where status might not be set but payment exists
-        const isPaid = status === 'PAID' || (p.amount && p.amount > 0)
-        
-        return isPaid
+        return status === 'PAID' || (p.amount && p.amount > 0)
       })
       .map(p => p.memberId)
     
-    // Return only group members who haven't paid
+    // Get members who have received loans and should stop paying after their loan month
+    const membersWithLoans = (selectedGroup.loans || []).filter(loan => 
+      loan.loanMonth && loan.loanMonth < selectedMonth
+    )
+    const membersWhoStoppedPaying = membersWithLoans.map(loan => loan.memberId)
+    
+    // Return only group members who:
+    // 1. Are part of the group
+    // 2. Haven't paid for this month
+    // 3. Haven't received a loan before this month (they stop paying after loan)
     return members.filter(m => {
       const isGroupMember = selectedGroup.members.some(gm => gm.memberId === m.id)
       const hasPaid = paidMemberIds.includes(m.id)
-      return isGroupMember && !hasPaid
+      const hasStoppedPaying = membersWhoStoppedPaying.includes(m.id)
+      return isGroupMember && !hasPaid && !hasStoppedPaying
     })
   }
   

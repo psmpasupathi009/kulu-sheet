@@ -271,6 +271,24 @@ export async function PUT(
       );
     }
 
+    // Check if member has already received a loan
+    // If yes, check if current month is after their loan month (they stop paying after loan)
+    const memberLoan = await prisma.loan.findFirst({
+      where: {
+        groupId: groupId,
+        memberId: data.memberId,
+      },
+    });
+
+    if (memberLoan && memberLoan.loanMonth && targetMonth > memberLoan.loanMonth) {
+      return NextResponse.json(
+        { 
+          error: `This member received a loan in month ${memberLoan.loanMonth}. They are no longer required to pay after receiving the loan. Cannot record payment for month ${targetMonth}.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // Check if payment already exists for this member and month
     const existingPayment = await prisma.collectionPayment.findUnique({
       where: {
