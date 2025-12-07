@@ -330,11 +330,30 @@ export default function LoanDetailPage() {
             )}
             {loan.status === "ACTIVE" && loan.remaining > 0 && (
               <div className="pt-4 border-t space-y-2">
+                {/* Show next month to pay */}
+                {loan.currentMonth < loan.months && (
+                  <div className="mb-3 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                    <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      Next Payment: Month {loan.currentMonth + 1} of {loan.months}
+                    </div>
+                    {loan.transactions.some(t => t.month === loan.currentMonth + 1) && (
+                      <div className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        This month is already paid
+                      </div>
+                    )}
+                  </div>
+                )}
                 {!showPaymentForm ? (
                   <Button
                     className="w-full"
-                    onClick={() => setShowPaymentForm(true)}>
-                    Record Monthly Payment
+                    onClick={() => setShowPaymentForm(true)}
+                    disabled={loan.currentMonth >= loan.months || loan.transactions.some(t => t.month === loan.currentMonth + 1)}>
+                    {loan.currentMonth >= loan.months 
+                      ? "Loan Completed" 
+                      : loan.transactions.some(t => t.month === loan.currentMonth + 1)
+                      ? "This Month Already Paid"
+                      : `Record Payment for Month ${loan.currentMonth + 1}`}
                   </Button>
                 ) : (
                   <Card className="border-2">
@@ -347,6 +366,14 @@ export default function LoanDetailPage() {
                           Payment Details
                         </div>
                         <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              Paying Month:
+                            </span>
+                            <span className="font-medium">
+                              Month {loan.currentMonth + 1} of {loan.months}
+                            </span>
+                          </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">
                               Monthly Payment:

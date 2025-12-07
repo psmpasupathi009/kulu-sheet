@@ -72,6 +72,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Calculate next month to pay
+    const nextMonth = loan.currentMonth + 1;
+
+    // Check if payment for this month already exists (prevent duplicates)
+    const existingPayment = loan.transactions.find(t => t.month === nextMonth);
+    if (existingPayment) {
+      return NextResponse.json(
+        { error: `Payment for month ${nextMonth} has already been recorded. Please proceed to the next month.` },
+        { status: 400 }
+      );
+    }
+
     // Calculate payment amount (one month's payment)
     const principalPayment = Math.min(monthlyPayment, loan.remaining);
 
