@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireAdmin, parseBody, handleApiError, resolveParams } from "@/lib/api-utils";
 import { z } from "zod";
 
 const giveLoanSchema = z.object({
@@ -14,24 +13,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
+    const authResult = await requireAdmin(request);
+    if (authResult instanceof NextResponse) return authResult;
 
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "Forbidden - Admin access required" },
-        { status: 403 }
-      );
-    }
-
-    const { id: groupId } = await params;
+    const { id: groupId } = await resolveParams(params);
     const body = await request.json();
-    const data = giveLoanSchema.parse(body);
+    const parseResult = parseBody(body, giveLoanSchema);
+    if (parseResult instanceof NextResponse) return parseResult;
+    const { data } = parseResult;
 
     // Get group with current collection
     const group = await prisma.financingGroup.findUnique({
@@ -206,8 +195,10 @@ export async function POST(
           
           // Verify the final remaining matches our calculation
           if (Math.abs(runningRemaining - remainingLoanAmount) > 0.01) {
-            console.error(`Loan ${loan.id}: Transaction remaining (${runningRemaining}) doesn't match calculated remaining (${remainingLoanAmount}). Updating loan.remaining to match.`);
             // Update the loan's remaining amount to match the transaction calculation
+            if (process.env.NODE_ENV === "development") {
+              console.error(`Loan ${loan.id}: Transaction remaining (${runningRemaining}) doesn't match calculated remaining (${remainingLoanAmount}). Updating loan.remaining to match.`);
+            }
             await tx.loan.update({
               where: { id: loan.id },
               data: { remaining: runningRemaining },
@@ -291,18 +282,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid input", details: error.errors },
-        { status: 400 }
-      );
-    }
-
-    console.error("Error giving loan:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to give loan" },
-      { status: 500 }
-    );
+    return handleApiError(error, "give loan");
   }
 }
 

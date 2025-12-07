@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { authenticateRequest, requireAdmin, parseBody, handleApiError, resolveParams } from "@/lib/api-utils";
 import { z } from "zod";
 
 const updateGroupSchema = z.object({
@@ -15,19 +14,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
+    const authResult = await authenticateRequest(request);
+    if (authResult instanceof NextResponse) return authResult;
 
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { id } = await params;
+    const { id } = await resolveParams(params);
     const group = await prisma.financingGroup.findUnique({
       where: { id },
       include: {
@@ -86,11 +76,7 @@ export async function GET(
 
     return NextResponse.json({ group }, { status: 200 });
   } catch (error) {
-    console.error("Error fetching financing group:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch financing group" },
-      { status: 500 }
-    );
+    return handleApiError(error, "fetch financing group");
   }
 }
 
@@ -99,24 +85,14 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
+    const authResult = await requireAdmin(request);
+    if (authResult instanceof NextResponse) return authResult;
 
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "Forbidden - Admin access required" },
-        { status: 403 }
-      );
-    }
-
-    const { id } = await params;
+    const { id } = await resolveParams(params);
     const body = await request.json();
-    const data = updateGroupSchema.parse(body);
+    const parseResult = parseBody(body, updateGroupSchema);
+    if (parseResult instanceof NextResponse) return parseResult;
+    const { data } = parseResult;
 
     const group = await prisma.financingGroup.findUnique({
       where: { id },
@@ -171,18 +147,7 @@ export async function PUT(
       { status: 200 }
     );
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid input", details: error.errors },
-        { status: 400 }
-      );
-    }
-
-    console.error("Error updating financing group:", error);
-    return NextResponse.json(
-      { error: "Failed to update financing group" },
-      { status: 500 }
-    );
+    return handleApiError(error, "update financing group");
   }
 }
 
@@ -191,23 +156,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
+    const authResult = await requireAdmin(request);
+    if (authResult instanceof NextResponse) return authResult;
 
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "Forbidden - Admin access required" },
-        { status: 403 }
-      );
-    }
-
-    const resolvedParams = await params;
-    const id = resolvedParams.id;
+    const { id } = await resolveParams(params);
 
     if (!id) {
       return NextResponse.json(
@@ -265,11 +217,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting financing group:", error);
-    return NextResponse.json(
-      { error: "Failed to delete financing group" },
-      { status: 500 }
-    );
+    return handleApiError(error, "delete financing group");
   }
 }
 

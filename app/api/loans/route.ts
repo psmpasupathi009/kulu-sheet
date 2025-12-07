@@ -1,82 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { authenticateRequest, handleApiError } from "@/lib/api-utils";
+
+const loanInclude = {
+  member: {
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+    },
+  },
+  group: {
+    select: {
+      groupNumber: true,
+      name: true,
+    },
+  },
+} as const;
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await authenticateRequest(request);
+    if (authResult instanceof NextResponse) return authResult;
+    const { user } = authResult;
 
     // Get loans based on user role
-    let loans;
-    if (user.role === "ADMIN") {
-      // Admin sees all loans
-      loans = await prisma.loan.findMany({
-        include: {
-          member: {
-            select: {
-              id: true,
-              name: true,
-              userId: true,
-            },
-          },
-          group: {
-            select: {
-              groupNumber: true,
-              name: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-    } else {
-      // Regular users see only their loans
-      const member = await prisma.member.findUnique({
-        where: { userId: user.userId || "" },
-      });
-
-      if (!member) {
-        return NextResponse.json({ loans: [] }, { status: 200 });
-      }
-
-      loans = await prisma.loan.findMany({
-        where: { memberId: member.id },
-        include: {
-          member: {
-            select: {
-              id: true,
-              name: true,
-              userId: true,
-            },
-          },
-          group: {
-            select: {
-              groupNumber: true,
-              name: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-    }
+    const loans =
+      user.role === "ADMIN"
+        ? await prisma.loan.findMany({
+            include: loanInclude,
+            orderBy: { createdAt: "desc" },
+          })
+        : await (async () => {
+            const member = await prisma.member.findUnique({
+              where: { userId: user.userId || "" },
+            });
+            if (!member) return [];
+            return prisma.loan.findMany({
+              where: { memberId: member.id },
+              include: loanInclude,
+              orderBy: { createdAt: "desc" },
+            });
+          })();
 
     return NextResponse.json({ loans }, { status: 200 });
   } catch (error) {
-    console.error("Error fetching loans:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch loans" },
-      { status: 500 }
-    );
+    return handleApiError(error, "fetch loans");
   }
 }
 

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { authenticateRequest, requireAdmin, parseBody, handleApiError, resolveParams } from "@/lib/api-utils";
 import { z } from "zod";
 
 const createGroupSchema = z.object({
@@ -13,17 +12,8 @@ const createGroupSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await authenticateRequest(request);
+    if (authResult instanceof NextResponse) return authResult;
 
     const groups = await prisma.financingGroup.findMany({
       include: {
@@ -83,33 +73,19 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ groups }, { status: 200 });
   } catch (error) {
-    console.error("Error fetching financing groups:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch financing groups" },
-      { status: 500 }
-    );
+    return handleApiError(error, "fetch financing groups");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "Forbidden - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const authResult = await requireAdmin(request);
+    if (authResult instanceof NextResponse) return authResult;
 
     const body = await request.json();
-    const data = createGroupSchema.parse(body);
+    const parseResult = parseBody(body, createGroupSchema);
+    if (parseResult instanceof NextResponse) return parseResult;
+    const { data } = parseResult;
 
     // Verify all members exist
     const members = await prisma.member.findMany({
@@ -173,18 +149,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid input", details: error.errors },
-        { status: 400 }
-      );
-    }
-
-    console.error("Error creating financing group:", error);
-    return NextResponse.json(
-      { error: "Failed to create financing group" },
-      { status: 500 }
-    );
+    return handleApiError(error, "create financing group");
   }
 }
 

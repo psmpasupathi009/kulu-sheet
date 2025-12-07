@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireAdmin, parseBody, handleApiError } from "@/lib/api-utils";
 import { z } from "zod";
 
 const repayLoanSchema = z.object({
@@ -12,23 +11,13 @@ const repayLoanSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "Forbidden - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const authResult = await requireAdmin(request);
+    if (authResult instanceof NextResponse) return authResult;
 
     const body = await request.json();
-    const data = repayLoanSchema.parse(body);
+    const parseResult = parseBody(body, repayLoanSchema);
+    if (parseResult instanceof NextResponse) return parseResult;
+    const { data } = parseResult;
 
     // Get loan with transactions and group info
     const loan = await prisma.loan.findUnique({
