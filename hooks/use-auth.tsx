@@ -7,7 +7,7 @@ interface User {
   id: string
   email: string
   name?: string
-  role: 'ADMIN' | 'USER'
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'USER'
   userId?: string
 }
 
@@ -78,7 +78,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const data = await response.json()
     setUser(data.user)
-    router.push('/dashbaord')
+    // Redirect based on role
+    if (data.user.role === "SUPER_ADMIN") {
+      router.push("/super-admin");
+    } else if (data.user.role === "ADMIN") {
+      router.push("/admin");
+    } else if (data.user.role === "USER") {
+      router.push("/user");
+    } else {
+      router.push("/auth/login");
+    }
   }
 
   const logout = async () => {

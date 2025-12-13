@@ -53,8 +53,8 @@ DATABASE_URL="mongodb://localhost:27017/kulu"
 # JWT Secret
 JWT_SECRET="your-secret-key-change-in-production"
 
-# Admin Email (Admin uses OTP login same as users)
-ADMIN_EMAIL="admin@example.com"
+# Super Admin Email (ENV only - not stored in database)
+SUPER_ADMIN_EMAIL="superadmin@company.com"
 
 # Email Configuration for OTP
 # IMPORTANT: For Gmail, you MUST use an App Password, not your regular password
@@ -119,20 +119,31 @@ kulu/
     └── schema.prisma     # Database schema
 ```
 
-## Authentication
+## Authentication Hierarchy
 
-### Admin Login
+### Super Admin (ENV Only)
+- Super Admin email is set in `SUPER_ADMIN_EMAIL` environment variable
+- Not stored in database - ENV-based authentication only
+- Can create Admins
+- Dashboard: `/super-admin`
 
-- Admins use OTP login (same as users)
-- Admin email is set in `ADMIN_EMAIL` environment variable
-- Admin receives OTP via email to login
-- Only admin can create new users
+### Admin (Database)
+- Created by Super Admin
+- Stored in `admins` collection
+- Can create Users
+- Dashboard: `/admin`
 
-### User Login
+### User (Database)
+- Created by Admins
+- Stored in `users` collection
+- Dashboard: `/user`
 
-- Users enter their email
-- OTP is sent to their email
-- Users enter the OTP to login
+### Login Flow
+1. User enters email
+2. System checks: Super Admin (ENV) → Admin (DB) → User (DB)
+3. OTP sent to email
+4. User enters OTP
+5. Redirected to role-based dashboard
 
 ## Financial System
 

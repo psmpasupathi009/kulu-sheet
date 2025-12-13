@@ -3,27 +3,30 @@ import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * POST /api/auth/logout
+ * Logs out the current user
+ */
 export async function POST() {
-  const cookieStore = await cookies();
-  
-  // Delete the auth-token cookie from the store
-  cookieStore.delete("auth-token");
-  
-  const response = NextResponse.json({ message: "Logged out successfully" });
-  
-  // Also set it in the response to ensure it's cleared on client side
-  // Set with expired date and empty value to clear cookie
-  response.cookies.set("auth-token", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    expires: new Date(0), // Expire immediately
-    maxAge: 0, // No max age
-    path: "/", // Same path as when it was set
-  });
-  
-  // Delete cookie again to be sure
-  response.cookies.delete("auth-token");
-  
-  return response;
+  try {
+    const cookieStore = await cookies();
+    
+    // Clear auth cookie
+    cookieStore.set("auth-token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+    });
+
+    return NextResponse.json({ message: "Logged out successfully" }, { status: 200 });
+  } catch (error) {
+    console.error("Error logging out:", error);
+    return NextResponse.json(
+      { error: "Failed to logout" },
+      { status: 500 }
+    );
+  }
 }
+

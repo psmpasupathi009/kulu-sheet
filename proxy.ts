@@ -76,9 +76,83 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith(route)
   );
 
-  // Block admin pages for non-admin users
-  if (isAdminPageRoute && user.role !== "ADMIN") {
-    return NextResponse.redirect(new URL("/dashbaord", request.url));
+  // Check Super Admin routes
+  const superAdminRoutes = ["/super-admin", "/api/super-admin"];
+  const isSuperAdminRoute = superAdminRoutes.some((route) =>
+    pathname.startsWith(route)
+  );
+
+  // Redirect authenticated users to their respective dashboards if they try to access login page
+  if (pathname.startsWith("/auth/login")) {
+    if (user.role === "SUPER_ADMIN") {
+      return NextResponse.redirect(new URL("/super-admin", request.url));
+    } else if (user.role === "ADMIN") {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    } else if (user.role === "USER") {
+      return NextResponse.redirect(new URL("/user", request.url));
+    }
+  }
+
+  // Block Super Admin routes for non-super-admin users
+  if (isSuperAdminRoute && user.role !== "SUPER_ADMIN") {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Forbidden - Super Admin access required" },
+        { status: 403 }
+      );
+    }
+    // Redirect to appropriate dashboard based on role
+    if (user.role === "ADMIN") {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    } else if (user.role === "USER") {
+      return NextResponse.redirect(new URL("/user", request.url));
+    }
+    return NextResponse.redirect(new URL("/auth/login", request.url));
+  }
+
+  // Block admin pages for non-admin users (Admin or Super Admin can access)
+  if (isAdminPageRoute && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+    // Redirect to appropriate dashboard based on role
+    if (user.role === "USER") {
+      return NextResponse.redirect(new URL("/user", request.url));
+    }
+    return NextResponse.redirect(new URL("/auth/login", request.url));
+  }
+
+  // Check access for Admin routes (includes routes for regular users)
+  const adminRoutes = ["/admin", "/api/admin"];
+  const isAdminRoute = adminRoutes.some((route) => pathname.startsWith(route));
+  if (isAdminRoute && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Forbidden - Admin access required" },
+        { status: 403 }
+      );
+    }
+    // Redirect to appropriate dashboard based on role
+    if (user.role === "USER") {
+      return NextResponse.redirect(new URL("/user", request.url));
+    }
+    return NextResponse.redirect(new URL("/auth/login", request.url));
+  }
+
+  // Check access for User routes
+  const userRoutes = ["/user", "/api/user"];
+  const isUserRoute = userRoutes.some((route) => pathname.startsWith(route));
+  if (isUserRoute && user.role !== "USER" && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Forbidden - User access required" },
+        { status: 403 }
+      );
+    }
+    // Redirect to appropriate dashboard based on role
+    if (user.role === "ADMIN") {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    } else if (user.role === "SUPER_ADMIN") {
+      return NextResponse.redirect(new URL("/super-admin", request.url));
+    }
+    return NextResponse.redirect(new URL("/auth/login", request.url));
   }
 
   // Block admin API routes for non-admin users (GET requests are allowed for viewing)
@@ -86,6 +160,7 @@ export async function proxy(request: NextRequest) {
   if (
     isAdminApiRoute &&
     user.role !== "ADMIN" &&
+    user.role !== "SUPER_ADMIN" &&
     !pathname.match(/\/api\/[^/]+\/\[id\]/)
   ) {
     // Allow GET requests to view data, but block write operations

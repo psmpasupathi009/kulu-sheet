@@ -11,221 +11,43 @@ datasource db {
 }
 
 enum UserRole {
-  ADMIN
   USER
 }
 
-enum TransactionType {
-  SAVINGS
-  LOAN
-  COLLECTION // Monthly collection payment
+// Note: Super Admin is ENV-only (SUPER_ADMIN_EMAIL), not stored in database
+
+// Admins collection (created by Super Admin)
+model Admin {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  email      String    @unique
+  name       String
+  phone      String    // Mobile number (required)
+  role       String    @default("admin")
+  status     String    @default("pending") // pending → active after first login
+  createdBy  String    // Email of Super Admin who created this admin
+  isActive   Boolean   @default(true)
+  otp        String?
+  otpExpires DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("admins")
 }
 
-enum LoanStatus {
-  PENDING // Loan approved but not disbursed
-  ACTIVE // Loan disbursed and being repaid
-  COMPLETED // Fully repaid
-  DEFAULTED // Defaulted on payments
-}
-
-enum PaymentMethod {
-  CASH // Cash payment
-  UPI // UPI transfer
-  BANK_TRANSFER // Bank transfer (NEFT/RTGS/IMPS)
-}
-
+// Users collection (created by Admins)
 model User {
   id         String    @id @default(auto()) @map("_id") @db.ObjectId
   email      String    @unique
-  name       String?
-  phone      String?
+  name       String
+  phone      String    // Mobile number (required)
   userId     String?   @unique // User ID for login
   role       UserRole  @default(USER)
-  password   String? // Hashed password for admin
+  status     String    @default("pending") // pending → active after first login
+  createdBy  String    // Email of Admin who created this user
   otp        String?
   otpExpires DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   @@map("users")
-}
-
-model Member {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String   @unique // User ID for member
-  name          String
-  fatherName    String?
-  address1      String?
-  address2      String?
-  accountNumber String?  @unique
-  phone         String?
-  photo         String? // URL to photo
-  ifscCode      String? // IFSC code for bank transfers
-  upiId         String? // UPI ID (e.g., name@paytm, phone@upi)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  savings            Savings[]
-  loans              Loan[]
-  transactions       Transaction[]
-  groupMembers       FinancingGroupMember[]
-  guaranteedLoans1   Loan[]                 @relation("LoanGuarantor1")
-  guaranteedLoans2   Loan[]                 @relation("LoanGuarantor2")
-  collectionPayments CollectionPayment[]
-
-  @@map("members")
-}
-
-model Savings {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  memberId    String   @db.ObjectId
-  member      Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  totalAmount Float    @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  transactions SavingsTransaction[]
-
-  @@map("savings")
-}
-
-model SavingsTransaction {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  savingsId String   @db.ObjectId
-  savings   Savings  @relation(fields: [savingsId], references: [id], onDelete: Cascade)
-  date      DateTime
-  amount    Float
-  total     Float // Running total after this transaction
-  createdAt DateTime @default(now())
-
-  @@map("savings_transactions")
-}
-
-model FinancingGroup {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  groupNumber   Int // Group number (1, 2, 3...)
-  name          String? // Optional group name
-  startDate     DateTime
-  endDate       DateTime?
-  monthlyAmount Float     @default(2000) // Monthly investment per member
-  currentMonth  Int       @default(0) // Current month in cycle (0 to totalMembers)
-  totalMembers  Int // Number of members (variable, not fixed)
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  members     FinancingGroupMember[]
-  collections MonthlyCollection[]
-  loans       Loan[]
-
-  @@map("financing_groups")
-}
-
-model FinancingGroupMember {
-  id        String         @id @default(auto()) @map("_id") @db.ObjectId
-  groupId   String         @db.ObjectId
-  group     FinancingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  memberId  String         @db.ObjectId
-  member    Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  joinMonth Int            @default(1) // Month when member joined the group (1-based)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-
-  @@unique([groupId, memberId])
-  @@map("financing_group_members")
-}
-
-model Loan {
-  id                 String          @id @default(auto()) @map("_id") @db.ObjectId
-  memberId           String          @db.ObjectId
-  member             Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  groupId            String?         @db.ObjectId
-  group              FinancingGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  principal          Float // Original loan amount
-  remaining          Float // Remaining balance
-  months             Int // Total months member must pay (totalMembers - loanMonth + 1)
-  loanMonth          Int? // Month when loan was disbursed (1-based, relative to group start)
-  currentMonth       Int             @default(0) // Current repayment month
-  status             LoanStatus      @default(PENDING)
-  reason             String? // Reason/purpose for the loan
-  totalPrincipalPaid Float           @default(0) // Total principal paid
-  disbursedAt        DateTime? // When loan was disbursed
-  completedAt        DateTime? // When loan was fully repaid
-  guarantor1Id       String?         @db.ObjectId
-  guarantor1         Member?         @relation("LoanGuarantor1", fields: [guarantor1Id], references: [id])
-  guarantor2Id       String?         @db.ObjectId
-  guarantor2         Member?         @relation("LoanGuarantor2", fields: [guarantor2Id], references: [id])
-  disbursementMethod PaymentMethod? // How loan was disbursed
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-
-  transactions LoanTransaction[]
-
-  @@map("loans")
-}
-
-model LoanTransaction {
-  id            String         @id @default(auto()) @map("_id") @db.ObjectId
-  loanId        String         @db.ObjectId
-  loan          Loan           @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  date          DateTime
-  amount        Float // Principal payment
-  remaining     Float // Remaining balance after this payment
-  month         Int // Month number (1-10) - Monthly payment
-  paymentMethod PaymentMethod? // Method used for payment (CASH, UPI, BANK_TRANSFER)
-  createdAt     DateTime       @default(now())
-
-  @@map("loan_transactions")
-}
-
-model MonthlyCollection {
-  id             String         @id @default(auto()) @map("_id") @db.ObjectId
-  groupId        String         @db.ObjectId
-  group          FinancingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  month          Int // Month number in cycle (1 to totalMembers)
-  collectionDate DateTime // Date of collection
-  totalCollected Float          @default(0) // Total collected from all members
-  expectedAmount Float          @default(0) // Expected amount (monthlyAmount × totalMembers)
-  isCompleted    Boolean        @default(false) // All members paid
-  loanMemberId   String?        @db.ObjectId // Member who received loan this month
-  loanAmount     Float? // Loan amount given (₹20,000)
-  loanDisbursed  Boolean        @default(false) // Whether loan was disbursed
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  payments CollectionPayment[]
-
-  @@unique([groupId, month])
-  @@map("monthly_collections")
-}
-
-model CollectionPayment {
-  id            String            @id @default(auto()) @map("_id") @db.ObjectId
-  collectionId  String            @db.ObjectId
-  collection    MonthlyCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  memberId      String            @db.ObjectId
-  member        Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  amount        Float             @default(2000) // Monthly contribution amount - Monthly payment
-  paymentDate   DateTime
-  paymentMethod String? // UPI, Razorpay, Cash, etc.
-  status        String            @default("PENDING") // PENDING, PAID, OVERDUE
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-
-  @@unique([collectionId, memberId])
-  @@map("collection_payments")
-}
-
-model Transaction {
-  id        String          @id @default(auto()) @map("_id") @db.ObjectId
-  memberId  String          @db.ObjectId
-  member    Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  type      TransactionType
-  date      DateTime
-  purpose   String?
-  amount    Float
-  photo     String? // URL to uploaded photo
-  createdAt DateTime        @default(now())
-
-  @@map("transactions")
 }

@@ -5,18 +5,27 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function HomePage() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoading) {
-      if (isAuthenticated) {
-        router.push("/dashbaord");
+      if (isAuthenticated && user) {
+        // Redirect based on user role
+        if (user.role === "SUPER_ADMIN") {
+          router.push("/super-admin");
+        } else if (user.role === "ADMIN") {
+          router.push("/admin");
+        } else if (user.role === "USER") {
+          router.push("/user");
+        } else {
+          router.push("/auth/login");
+        }
       } else {
         router.push("/auth/login");
       }
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, user, router]);
 
   // Show loading while checking auth status
   return (
