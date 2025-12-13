@@ -13,8 +13,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mail, Lock, ArrowRight } from "lucide-react";
-import Image from "next/image";
+import { Mail, Lock, ArrowRight, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function LoginPage() {
@@ -27,10 +26,8 @@ export default function LoginPage() {
   const { user, isAuthenticated, isLoading, refreshUser } = useAuth();
   const router = useRouter();
 
-  // Redirect to dashboard if already logged in
   useEffect(() => {
     if (!isLoading && isAuthenticated && user) {
-      // Redirect based on user role
       if (user.role === "SUPER_ADMIN") {
         router.push("/super-admin");
       } else if (user.role === "ADMIN") {
@@ -115,10 +112,8 @@ export default function LoginPage() {
       setInfo("Login successful!");
       toast.success("Login successful!", { id: "otp-validate" });
 
-      // Refresh user data
       await refreshUser();
 
-      // Redirect to appropriate dashboard based on role
       if (data.user?.role === "SUPER_ADMIN") {
         router.push("/super-admin");
       } else if (data.user?.role === "ADMIN") {
@@ -137,7 +132,6 @@ export default function LoginPage() {
     }
   };
 
-  // Show loading while checking auth status
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -150,22 +144,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      <Card className="w-full max-w-md shadow-2xl border-0 overflow-hidden">
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-6 text-white">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
-              <Lock className="h-8 w-8" />
-            </div>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      <Card className="w-full max-w-md shadow-lg border-0">
+        <CardContent className="p-8">
+          <div className="mb-6 text-center">
+            <h1 className="text-2xl font-bold mb-2">Login</h1>
+            <p className="text-sm text-muted-foreground">
+              {step === 1
+                ? "Enter your email to receive a passcode"
+                : `Enter the passcode sent to ${email}`}
+            </p>
           </div>
-          <h1 className="text-3xl font-bold text-center mb-2">Welcome Back</h1>
-          <p className="text-center text-blue-100 text-sm">
-            {step === 1
-              ? "Enter your email to receive a passcode"
-              : `Enter the passcode sent to ${email}`}
-          </p>
-        </div>
-        <CardContent className="p-6 md:p-8">
+
           <form
             onSubmit={
               step === 2
@@ -176,9 +166,9 @@ export default function LoginPage() {
                   }
             }>
             <FieldGroup className="space-y-4">
-
               {info && (
-                <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20 animate-in slide-in-from-top-2">
+                <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
                   <AlertDescription className="text-green-800 dark:text-green-200">
                     {info}
                   </AlertDescription>
@@ -186,7 +176,8 @@ export default function LoginPage() {
               )}
 
               {error && (
-                <Alert variant="destructive" className="animate-in slide-in-from-top-2">
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
@@ -194,10 +185,7 @@ export default function LoginPage() {
               {step === 1 && (
                 <>
                   <Field>
-                    <FieldLabel htmlFor="email" className="text-base font-semibold">
-                      <Mail className="mr-2 h-4 w-4 inline text-blue-600" />
-                      Email Address
-                    </FieldLabel>
+                    <FieldLabel htmlFor="email">Email Address</FieldLabel>
                     <Input
                       id="email"
                       type="email"
@@ -206,16 +194,16 @@ export default function LoginPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       required
                       autoFocus
-                      className="h-11 text-base"
+                      className="h-11"
                     />
-                    <FieldDescription className="text-sm">
-                      Enter your email to receive a one-time passcode
+                    <FieldDescription>
+                      We'll send you a one-time passcode
                     </FieldDescription>
                   </Field>
 
                   <Button
                     type="submit"
-                    className="w-full h-11 text-base font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                    className="w-full h-11"
                     disabled={loading || !email}>
                     {loading ? (
                       <>
@@ -235,10 +223,7 @@ export default function LoginPage() {
               {step === 2 && (
                 <>
                   <Field>
-                    <FieldLabel htmlFor="code" className="text-base font-semibold">
-                      <Lock className="mr-2 h-4 w-4 inline text-blue-600" />
-                      Passcode
-                    </FieldLabel>
+                    <FieldLabel htmlFor="code">Passcode</FieldLabel>
                     <Input
                       id="code"
                       type="text"
@@ -248,14 +233,14 @@ export default function LoginPage() {
                       required
                       autoFocus
                       maxLength={6}
-                      className="text-center text-3xl tracking-[0.5em] font-mono h-16 text-blue-600 font-bold"
+                      className="text-center text-2xl tracking-[0.3em] font-mono h-14"
                     />
-                    <FieldDescription className="text-sm">
+                    <FieldDescription>
                       Enter the 6-digit code sent to your email
                     </FieldDescription>
                   </Field>
 
-                  <div className="flex gap-3 pt-2">
+                  <div className="flex gap-3">
                     <Button
                       type="button"
                       variant="outline"
@@ -271,7 +256,7 @@ export default function LoginPage() {
                     </Button>
                     <Button
                       type="submit"
-                      className="flex-1 h-11 text-base font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                      className="flex-1 h-11"
                       disabled={loading || code.length !== 6}>
                       {loading ? (
                         <>
@@ -295,4 +280,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
